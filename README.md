@@ -157,3 +157,8 @@ npm run inspect:tree <файл>.tbl
 `ORDER BY` / `LIMIT`, `LEFT JOIN`, `DROP TABLE` / `DROP INDEX` в SQL,
 `WHERE IN` / `BETWEEN`, `NULL`, `UNIQUE`, row-level locking или MVCC,
 многопроцессный доступ.
+
+## Обновления
+
+Проект развивается — время от времени будут выходить обновления: новые
+возможности, улучшения и исправления. Следите за коммитами в репозитории.
