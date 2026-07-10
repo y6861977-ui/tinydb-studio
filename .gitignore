@@ -1,0 +1,18 @@
+# зависимости
+node_modules/
+
+# рантайм-данные движка и Studio (локальные базы, не исходники)
+data/
+mydata/
+studio-data/
+data.db
+*.tbl
+*.idx
+catalog.log
+indexes.log
+wal.log
+query_history*
+
+# служебное ОС/редакторов
+.DS_Store
+*.log

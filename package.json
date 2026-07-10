@@ -1,0 +1,21 @@
+{
+  "name": "tiny-db",
+  "version": "0.1.0",
+  "description": "Своя база данных с нуля на TypeScript — без внешних библиотек в ядре",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "repl": "tsx src/sql-repl.ts",
+    "repl:kv": "tsx src/repl.ts",
+    "studio": "tsx src/server.ts",
+    "test": "tsx test/run.ts",
+    "typecheck": "tsc --noEmit",
+    "inspect:log": "tsx tools/inspect-log.ts",
+    "inspect:tree": "tsx tools/inspect-tree.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

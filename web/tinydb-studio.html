@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tinydb Studio</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNyIgZmlsbD0iIzBkMTExNyIvPjxjaXJjbGUgY3g9IjE2IiBjeT0iMTYiIHI9IjgiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzU4YTZmZiIgc3Ryb2tlLXdpZHRoPSIzIi8+PC9zdmc+">
+<style>
+  :root{
+    --bg:#0d1117; --surface:#161b22; --surface2:#1c2430;
+    --border:#30363d; --text:#e6edf3; --muted:#8b949e;
+    --accent:#58a6ff; --accent-bg:#132033; --green:#3fb950; --red:#f85149;
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans)}
+
+  /* --- полноэкранное приложение (крупный вид) --- */
+  .app{display:flex;flex-direction:column;height:100vh}
+  .top{display:flex;align-items:center;justify-content:space-between;
+    padding:16px 24px;border-bottom:1px solid var(--border);flex-shrink:0}
+  .brand{display:flex;align-items:center;gap:12px}
+  .brand .logo{width:40px;height:40px;border-radius:10px;background:var(--accent-bg);
+    color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:22px}
+  .brand .name{font-size:18px;font-weight:600}
+  .brand .sub{font-size:12px;color:var(--muted);font-family:var(--mono)}
+  .top-right{display:flex;align-items:center;gap:14px}
+  .conn{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--green);font-family:var(--mono)}
+  .conn .dot{width:9px;height:9px;border-radius:50%;background:var(--green)}
+  .btn2{background:var(--surface2);color:var(--text);border:1px solid var(--border);
+    border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;font-family:var(--sans)}
+  .btn2:hover{border-color:var(--accent);color:var(--accent)}
+  .btn2.danger{color:var(--red)}
+  .btn2.danger:hover{border-color:var(--red);color:var(--red)}
+  .delconfirm{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+  .delconfirm .dcq{font-family:var(--mono);color:var(--text)}
+
+  .body{display:flex;flex:1;min-height:0}
+  .side{width:250px;border-right:1px solid var(--border);padding:16px 10px;flex-shrink:0;
+    overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+  .h{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;
+    letter-spacing:.05em;padding:0 10px 6px}
+  .item{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;
+    border-radius:8px;cursor:pointer;font-family:var(--mono);font-size:14px}
+  .item:hover{background:var(--surface2)}
+  .item.on{background:var(--accent-bg);color:var(--accent)}
+  .item .cnt{font-size:12px;color:var(--muted)}
+  .item.on .cnt{color:var(--accent)}
+  .item .tright{display:flex;align-items:center;gap:8px}
+  .item .tdel{opacity:0;font-size:13px;cursor:pointer;padding:1px 4px;border-radius:6px;color:var(--muted);user-select:none}
+  .item:hover .tdel{opacity:.6}
+  .item .tdel:hover{opacity:1;color:var(--red);background:rgba(248,81,73,.15)}
+  .addrow{display:flex;gap:6px;padding:6px 8px}
+  .addrow input{flex:1;min-width:0;background:var(--bg);color:var(--text);border:1px solid var(--border);
+    border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:13px}
+  .addrow input:focus{outline:none;border-color:var(--accent)}
+  .addrow button{background:var(--accent);color:#04121f;border:none;border-radius:8px;
+    width:38px;font-size:18px;font-weight:600;cursor:pointer}
+  .empty{color:var(--muted);font-size:13px;padding:6px 12px;font-style:italic}
+  .sep{height:1px;background:var(--border);margin:8px 4px}
+  .hrow{display:flex;align-items:center;justify-content:space-between;padding:0 10px 6px}
+  .hrow .h{padding:0}
+  .hclear{cursor:pointer;color:var(--muted);font-size:13px;line-height:1;padding:2px 5px;
+    border-radius:6px;flex-shrink:0;user-select:none}
+  .hclear:hover{color:var(--red);background:var(--surface2)}
+  .histbox{max-height:240px;overflow-y:auto}
+  .hitem{display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:8px;cursor:pointer;
+    font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .hitem:hover{background:var(--surface2);color:var(--text)}
+  .hitem .htext{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hitem .hx{flex-shrink:0;font-size:11px;color:var(--muted);background:var(--surface2);
+    border-radius:6px;padding:1px 6px}
+  .hitem:hover .hx{background:var(--bg)}
+  .showall{padding:6px 10px;font-size:12px;color:var(--accent);cursor:pointer;user-select:none}
+  .showall:hover{text-decoration:underline}
+
+  .main{flex:1;min-width:0;padding:20px 24px;display:flex;flex-direction:column;gap:18px;overflow:hidden}
+  .tabs{display:inline-flex;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:3px;gap:2px;align-self:flex-start}
+  .tabs button{background:transparent;color:var(--muted);border:none;border-radius:6px;padding:7px 16px;
+    font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)}
+  .tabs button.on{background:var(--accent-bg);color:var(--accent)}
+  #dataview,#schemaview{flex:1;min-height:0;display:flex;flex-direction:column;gap:18px}
+  #schemaview{overflow-y:auto}
+  .tcard{border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px}
+  .tcard .thead{display:flex;justify-content:space-between;align-items:baseline;padding:12px 16px;
+    background:var(--surface2);border-bottom:1px solid var(--border)}
+  .tcard .tname{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--accent)}
+  .tcard .tmeta{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .tcard .col{display:flex;align-items:center;gap:12px;padding:9px 16px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:13px}
+  .tcard .col:last-child{border-bottom:none}
+  .tcard .cname{min-width:160px}
+  .tcard .ctype{color:var(--accent);min-width:80px}
+  .pkbadge{font-size:11px;color:var(--yellow,#d4a72c);border:1px solid #d4a72c;border-radius:5px;padding:1px 6px}
+  .schema-empty{color:var(--muted);font-family:var(--mono);font-size:14px;padding:8px}
+  .lbl{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+  /* редактор с подсветкой: прозрачная textarea поверх подсвеченного pre */
+  .editor{position:relative}
+  .editor .hl,.editor textarea{
+    box-sizing:border-box;margin:0;padding:14px;border:1px solid var(--border);border-radius:10px;
+    font-family:var(--mono);font-size:14px;line-height:1.6;
+    white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;tab-size:2}
+  .editor textarea{position:relative;z-index:2;display:block;width:100%;height:110px;resize:vertical;
+    background:transparent;color:transparent;caret-color:var(--text)}
+  .editor textarea:focus{outline:none;border-color:var(--accent)}
+  .editor .hl{position:absolute;inset:0;z-index:1;overflow:auto;pointer-events:none;
+    background:var(--bg);color:var(--text)}
+  .t-key{color:var(--accent);font-weight:600}
+  .t-str{color:var(--green)}
+  .t-num{color:#d2a8ff}
+  .t-com{color:var(--muted);font-style:italic}
+  .run{display:inline-flex;align-items:center;gap:7px;background:var(--accent);color:#04121f;
+    border:none;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:600;cursor:pointer}
+  .run:hover{filter:brightness(1.08)}
+  .res{border-top:1px solid var(--border);padding-top:14px;flex:1;min-height:0;display:flex;flex-direction:column}
+  .res .head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+  .status{font-size:12px;color:var(--muted);font-family:var(--mono)}
+  .grid{overflow:auto;border:1px solid var(--border);border-radius:10px;flex:1;min-height:0}
+  table{width:100%;border-collapse:collapse}
+  th{position:sticky;top:0;background:var(--surface);text-align:left;font-family:var(--mono);
+    font-size:12px;font-weight:600;color:var(--muted);padding:10px 14px;border-bottom:1px solid var(--border);white-space:nowrap}
+  td{font-family:var(--mono);font-size:14px;padding:10px 14px;border-bottom:1px solid var(--border);white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  .err{color:var(--red);font-family:var(--mono);font-size:14px;padding:14px}
+  td.cell{cursor:text}
+  td.cell:hover{background:var(--accent-bg);box-shadow:inset 0 0 0 1px var(--border)}
+  .celledit{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--accent);
+    border-radius:6px;padding:6px 8px;font-family:var(--mono);font-size:14px}
+  .celledit:focus{outline:none}
+  .hint{font-size:11px;color:var(--muted);font-family:var(--mono);margin-left:10px}
+  #addform{border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;
+    background:var(--surface2);display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field label{font-size:11px;color:var(--muted);font-family:var(--mono)}
+  .field input{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;
+    padding:8px 10px;font-family:var(--mono);font-size:13px;width:150px}
+  .field input:focus{outline:none;border-color:var(--accent)}
+  #addform .actions{display:flex;gap:8px}
+  #adderr{flex-basis:100%;color:var(--red);font-family:var(--mono);font-size:13px}
+  #adderr:empty{display:none}
+  td.actions{text-align:right;white-space:nowrap;width:1px}
+  .del{cursor:pointer;opacity:.6;font-size:15px;padding:2px 6px;border-radius:6px;user-select:none}
+  .del:hover{opacity:1;background:rgba(248,81,73,.15)}
+  .cfm{color:var(--muted);font-family:var(--mono);font-size:12px;margin-right:8px}
+  .delyes,.delno{cursor:pointer;font-family:var(--mono);font-size:12px;padding:3px 9px;border-radius:6px;user-select:none}
+  .delyes{color:var(--red);border:1px solid var(--red)}
+  .delyes:hover{background:rgba(248,81,73,.18)}
+  .delno{color:var(--muted);border:1px solid var(--border);margin-left:6px}
+  .delno:hover{border-color:var(--accent);color:var(--accent)}
+
+  /* --- экран входа --- */
+  .overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:10}
+  .login{width:340px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px}
+  .login .brand{justify-content:center;margin-bottom:6px}
+  .login .tagline{text-align:center;color:var(--muted);font-size:13px;margin-bottom:22px}
+  .login label{display:block;font-size:12px;color:var(--muted);margin:0 0 6px 2px}
+  .login input{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);
+    border-radius:8px;padding:11px 12px;font-family:var(--mono);font-size:14px;margin-bottom:14px}
+  .login input:focus{outline:none;border-color:var(--accent)}
+  .login .run{width:100%;justify-content:center;margin-top:4px}
+  .login .err{text-align:center;padding:8px 0 0}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+
+<!-- ЭКРАН ВХОДА -->
+<div class="overlay" id="login">
+  <form class="login" id="loginForm">
+    <div class="brand"><div class="logo">&#9673;</div>
+      <div><div class="name">tinydb Studio</div><div class="sub" data-i18n="brandSub">своя SQL-база с нуля</div></div></div>
+    <div class="tagline" data-i18n="loginTagline">вход в панель управления</div>
+    <label data-i18n="loginUser">Логин</label>
+    <input id="luser" autocomplete="username" value="">
+    <label data-i18n="loginPass">Пароль</label>
+    <input id="lpass" type="password" autocomplete="current-password" value="">
+    <button class="run" type="submit" data-i18n="loginBtn">Войти</button>
+    <div class="err" id="lerr"></div>
+  </form>
+</div>
+
+<!-- ПРИЛОЖЕНИЕ -->
+<div class="app" id="app" hidden>
+  <div class="top">
+    <div class="brand">
+      <div class="logo">&#9673;</div>
+      <div><div class="name">tinydb Studio</div><div class="sub" data-i18n="brandSub">своя SQL-база с нуля</div></div>
+    </div>
+    <div class="top-right">
+      <span class="conn"><span class="dot"></span><span id="curdb">—</span></span>
+      <button class="btn2" id="langbtn" title="Сменить язык (RU/EN)">EN</button>
+      <button class="btn2 danger" id="deldb" data-i18n="delDbBtn" data-i18n-title="delDbTitle" title="Удалить текущую базу" hidden>🗑 Удалить БД</button>
+      <span class="delconfirm" id="deldbConfirm" hidden>
+        <span class="dcq">удалить базу?</span>
+        <button class="btn2 danger" id="deldbYes" data-i18n="yes">да</button>
+        <button class="btn2" id="deldbNo" data-i18n="no">нет</button>
+      </span>
+      <button class="btn2" id="logout" data-i18n="logoutBtn">Выйти</button>
+    </div>
+  </div>
+  <div class="body">
+    <div class="side">
+      <div class="h" data-i18n="dbsHeader">Базы данных</div>
+      <div id="dblist"></div>
+      <div class="addrow">
+        <input id="newdb" placeholder="имя новой БД" data-i18n-ph="newDbPh" spellcheck="false">
+        <button id="adddb" title="Создать базу" data-i18n-title="addDbTitle">+</button>
+      </div>
+      <div class="sep"></div>
+      <div class="h" data-i18n="tablesHeader">Таблицы</div>
+      <div id="list"></div>
+      <div class="sep"></div>
+      <div class="hrow">
+        <div class="h" data-i18n="historyHeader">История запросов</div>
+        <span id="histclear" class="hclear" title="Очистить историю" data-i18n-title="histClearTitle">🗑</span>
+      </div>
+      <div class="histbox"><div id="histlist"></div></div>
+    </div>
+    <div class="main">
+      <div class="tabs">
+        <button id="tabData" class="on" data-i18n="tabData">Данные</button>
+        <button id="tabSchema" data-i18n="tabSchema">Схема</button>
+      </div>
+      <div id="dataview">
+        <div>
+          <div class="lbl" data-i18n="sqlLabel">SQL-запрос</div>
+          <div class="editor">
+            <pre class="hl" id="hl" aria-hidden="true"></pre>
+            <textarea id="sql" spellcheck="false" autocapitalize="off" autocomplete="off">SELECT 1;</textarea>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:10px">
+            <input type="file" id="sqlfile" accept=".sql,.txt" hidden>
+            <button class="btn2" id="importbtn" title="Импортировать и выполнить .sql-файл" data-i18n="importBtn" data-i18n-title="importTitle">&#8593; Импорт SQL</button>
+            <button class="run" id="run" data-i18n="runBtn">&#9654; Выполнить</button>
+          </div>
+        </div>
+        <div class="res">
+          <div class="head">
+            <div style="display:flex;align-items:baseline;gap:12px">
+              <div class="lbl" style="margin:0" data-i18n="resultLabel">Результат</div>
+              <button class="btn2" id="addrowbtn" data-i18n="addRowBtn" hidden>+ строка</button>
+              <button class="btn2" id="exportbtn" data-i18n="exportBtn" hidden>⬇ Экспорт</button>
+              <span id="exportmenu" hidden>
+                <button class="btn2" data-fmt="csv">CSV</button>
+                <button class="btn2" data-fmt="json">JSON</button>
+              </span>
+              <span class="hint" id="edithint"></span>
+            </div>
+            <div class="status" id="status"></div>
+          </div>
+          <div id="addform" hidden></div>
+          <div class="grid"><table><thead id="head"></thead><tbody id="tbody"></tbody></table></div>
+        </div>
+      </div>
+      <div id="schemaview" hidden></div>
+    </div>
+  </div>
+</div>
+
+<script>
+var $=function(id){return document.getElementById(id);};
+var head=$('head'),tbody=$('tbody'),statusEl=$('status'),sql=$('sql'),
+    list=$('list'),dblist=$('dblist'),curdb=$('curdb'),edithint=$('edithint'),
+    addrowbtn=$('addrowbtn'),addform=$('addform'),histlist=$('histlist'),
+    exportbtn=$('exportbtn'),exportmenu=$('exportmenu');
+var current=null;      // текущая выбранная база
+var tablesMeta=[];     // [{name, columns, primaryKey, rowCount, schema:[{name,type,pk}]}]
+var view='data';       // 'data' | 'schema'
+var curCols=[],curRows=[],editCtx=null; // состояние текущего результата
+
+// --- интернационализация (RU/EN) -------------------------------------------
+// Переводится вся оболочка UI. Тексты ошибок с сервера (из движка) — данные,
+// приходят на русском и не переводятся здесь.
+var LANG=(function(){try{return localStorage.getItem('tinydb_lang')||'ru';}catch(e){return 'ru';}})();
+var I18N={
+  ru:{
+    brandSub:'своя SQL-база с нуля', loginTagline:'вход в панель управления',
+    loginUser:'Логин', loginPass:'Пароль', loginBtn:'Войти',
+    dbsHeader:'Базы данных', tablesHeader:'Таблицы', historyHeader:'История запросов',
+    tabData:'Данные', tabSchema:'Схема', sqlLabel:'SQL-запрос',
+    importBtn:'↑ Импорт SQL', runBtn:'▶ Выполнить', resultLabel:'Результат',
+    addRowBtn:'+ строка', exportBtn:'⬇ Экспорт', logoutBtn:'Выйти',
+    delDbBtn:'🗑 Удалить БД', yes:'да', no:'нет', newDbPh:'имя новой БД',
+    addDbTitle:'Создать базу', delDbTitle:'Удалить текущую базу',
+    histClearTitle:'Очистить историю', importTitle:'Импортировать и выполнить .sql-файл',
+    langTitle:'Сменить язык (RU/EN)', clearTitle:'очистить', cancelTitle:'отмена',
+    editHint:'✎ клик по ячейке — правка · Enter сохранить · Esc отмена',
+    readOnly:'только чтение', rowDelTitle:'удалить строку',
+    saveBtn:'Сохранить', cancelBtn:'Отмена',
+    rowAdded:'строка добавлена', rowDeleted:'строка удалена', rowSaved:'строка сохранена',
+    confirmDelRow:'удалить строку?', histEmpty:'пусто', histCollapse:'свернуть',
+    noDb:'нет базы', noTables:'таблиц нет', noTablesHint:'в базе нет таблиц — создайте через SQL',
+    loadTablesErr:'не удалось загрузить таблицы', noDbsHint:'баз нет — создайте ниже',
+    selectDbFirst:'сначала выберите или создайте базу данных', fileEmpty:'файл пуст',
+    confirmDelTable:'удалить таблицу?', tableDelTitle:'Удалить таблицу',
+    errInsert:'ошибка вставки', errDelete:'ошибка удаления', errSave:'ошибка сохранения',
+    errQuery:'ошибка запроса', errClearHist:'ошибка очистки истории',
+    errCreateDb:'ошибка создания базы', errDelDb:'ошибка удаления базы',
+    errDropTable:'ошибка удаления таблицы', errImport:'ошибка импорта', errLogin:'ошибка входа',
+    schemaSelectDb:'выберите базу данных', pkBadge:'PRIMARY KEY',
+    exported:function(f){return 'результат выгружен ('+f+')';},
+    statusRows:function(n,sc,pl){return 'строк: '+n+' · просмотрено: '+sc+' · план: '+pl;},
+    histShowAll:function(n){return 'показать все ('+n+')';},
+    tablesCount:function(n){return n+' табл.';},
+    importDone:function(pl){return 'импорт выполнен · '+pl;},
+    confirmDelDb:function(name){return 'удалить «'+name+'»?';},
+    net:function(m){return 'сеть: '+m;},
+    schemaNoTables:function(db){return 'в базе '+db+' нет таблиц';},
+    schemaMeta:function(cols,rows){return cols+' колонок · '+rows+' строк';}
+  },
+  en:{
+    brandSub:'your SQL database from scratch', loginTagline:'sign in to the control panel',
+    loginUser:'Username', loginPass:'Password', loginBtn:'Sign in',
+    dbsHeader:'Databases', tablesHeader:'Tables', historyHeader:'Query history',
+    tabData:'Data', tabSchema:'Schema', sqlLabel:'SQL query',
+    importBtn:'↑ Import SQL', runBtn:'▶ Run', resultLabel:'Result',
+    addRowBtn:'+ row', exportBtn:'⬇ Export', logoutBtn:'Sign out',
+    delDbBtn:'🗑 Delete DB', yes:'yes', no:'no', newDbPh:'new DB name',
+    addDbTitle:'Create database', delDbTitle:'Delete current database',
+    histClearTitle:'Clear history', importTitle:'Import and run a .sql file',
+    langTitle:'Switch language (RU/EN)', clearTitle:'clear', cancelTitle:'cancel',
+    editHint:'✎ click a cell to edit · Enter save · Esc cancel',
+    readOnly:'read-only', rowDelTitle:'delete row',
+    saveBtn:'Save', cancelBtn:'Cancel',
+    rowAdded:'row added', rowDeleted:'row deleted', rowSaved:'row saved',
+    confirmDelRow:'delete row?', histEmpty:'empty', histCollapse:'collapse',
+    noDb:'no database', noTables:'no tables', noTablesHint:'no tables — create one with SQL',
+    loadTablesErr:'failed to load tables', noDbsHint:'no databases — create one below',
+    selectDbFirst:'select or create a database first', fileEmpty:'file is empty',
+    confirmDelTable:'delete table?', tableDelTitle:'Delete table',
+    errInsert:'insert error', errDelete:'delete error', errSave:'save error',
+    errQuery:'query error', errClearHist:'clear history error',
+    errCreateDb:'create database error', errDelDb:'delete database error',
+    errDropTable:'drop table error', errImport:'import error', errLogin:'login error',
+    schemaSelectDb:'select a database', pkBadge:'PRIMARY KEY',
+    exported:function(f){return 'result exported ('+f+')';},
+    statusRows:function(n,sc,pl){return 'rows: '+n+' · scanned: '+sc+' · plan: '+pl;},
+    histShowAll:function(n){return 'show all ('+n+')';},
+    tablesCount:function(n){return n+' tbl.';},
+    importDone:function(pl){return 'import done · '+pl;},
+    confirmDelDb:function(name){return 'delete “'+name+'”?';},
+    net:function(m){return 'network: '+m;},
+    schemaNoTables:function(db){return 'database '+db+' has no tables';},
+    schemaMeta:function(cols,rows){return cols+' columns · '+rows+' rows';}
+  }
+};
+// tr('key') -> строка; tr('key',a,b) вызывает функцию-интерполяцию из словаря
+function tr(key){
+  var d=I18N[LANG]||I18N.ru, v=d[key];
+  if(v==null)v=I18N.ru[key];
+  if(typeof v==='function')return v.apply(null,[].slice.call(arguments,1));
+  return v!=null?v:key;
+}
+// применить текущий язык: статические элементы + перерисовать динамические зоны
+function applyLang(){
+  try{localStorage.setItem('tinydb_lang',LANG);}catch(e){}
+  document.documentElement.lang=LANG;
+  var byText=document.querySelectorAll('[data-i18n]');
+  Array.prototype.forEach.call(byText,function(el){el.textContent=tr(el.getAttribute('data-i18n'));});
+  Array.prototype.forEach.call(document.querySelectorAll('[data-i18n-ph]'),function(el){el.setAttribute('placeholder',tr(el.getAttribute('data-i18n-ph')));});
+  Array.prototype.forEach.call(document.querySelectorAll('[data-i18n-title]'),function(el){el.setAttribute('title',tr(el.getAttribute('data-i18n-title')));});
+  var lb=$('langbtn');if(lb){lb.textContent=(LANG==='ru'?'EN':'RU');lb.title=tr('langTitle');}
+  // динамические зоны обновляем только когда приложение видно
+  if(!$('app').hasAttribute('hidden')){
+    // метки счётчиков в списке баз («N табл.») — на месте, без перезагрузки результата
+    Array.prototype.forEach.call(dblist.querySelectorAll('.item'),function(el){
+      var c=el.querySelector('.cnt');if(c)c.textContent=tr('tablesCount',el.getAttribute('data-tables')||0);
+    });
+    loadHistory();
+    if(current)loadTables(null,false); else curdb.textContent=tr('noDb');
+    if(view==='schema')renderSchema();
+    edithint.textContent=editCtx?tr('editHint'):(curCols.length?tr('readOnly'):'');
+  }
+}
+
+// экранируем в т.ч. кавычки — esc() используется и в контексте HTML-атрибутов
+function esc(v){return String(v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+
+// --- подсветка синтаксиса SQL (свой токенайзер, без библиотек) ---
+var hl=$('hl');
+var SQL_KW={};
+('SELECT FROM WHERE JOIN ON AS GROUP BY AND OR ORDER LIMIT INSERT INTO VALUES '+
+ 'UPDATE SET DELETE CREATE TABLE INDEX PRIMARY KEY INTEGER TEXT '+
+ 'BEGIN COMMIT ROLLBACK COUNT SUM MIN MAX AVG NOT NULL DISTINCT')
+  .split(' ').forEach(function(k){SQL_KW[k]=1;});
+function isWordCh(c){return c==='_'||(c>='0'&&c<='9')||(c>='A'&&c<='Z')||(c>='a'&&c<='z');}
+function highlight(src){
+  var out='',i=0,n=src.length;
+  while(i<n){
+    var c=src[i];
+    if(c==='-'&&src[i+1]==='-'){var j=i;while(j<n&&src[j]!=='\n')j++;out+='<span class="t-com">'+esc(src.slice(i,j))+'</span>';i=j;continue;}
+    if(c==="'"){var j=i+1;while(j<n){if(src[j]==="'"){if(src[j+1]==="'"){j+=2;continue;}j++;break;}j++;}out+='<span class="t-str">'+esc(src.slice(i,j))+'</span>';i=j;continue;}
+    if(c>='0'&&c<='9'){var j=i;while(j<n&&src[j]>='0'&&src[j]<='9')j++;out+='<span class="t-num">'+esc(src.slice(i,j))+'</span>';i=j;continue;}
+    if(isWordCh(c)&&!(c>='0'&&c<='9')){var j=i;while(j<n&&isWordCh(src[j]))j++;var w=src.slice(i,j);out+=SQL_KW[w.toUpperCase()]?'<span class="t-key">'+esc(w)+'</span>':esc(w);i=j;continue;}
+    out+=esc(c);i++;
+  }
+  return out;
+}
+function hlUpdate(){hl.innerHTML=highlight(sql.value)+'\n';hl.scrollTop=sql.scrollTop;hl.scrollLeft=sql.scrollLeft;}
+function setSql(v){sql.value=v;hlUpdate();}
+sql.addEventListener('input',hlUpdate);
+sql.addEventListener('scroll',function(){hl.scrollTop=sql.scrollTop;hl.scrollLeft=sql.scrollLeft;});
+hlUpdate();
+
+// Можно ли редактировать результат: колонки принадлежат ровно одной таблице,
+// и среди них есть её первичный ключ (иначе строку не идентифицировать).
+function computeEditContext(cols){
+  var m=tablesMeta.filter(function(t){
+    var allBelong=cols.every(function(c){return t.columns.indexOf(c)>-1;});
+    return allBelong && cols.indexOf(t.primaryKey)>-1;
+  });
+  return m.length===1 ? {table:m[0].name, pk:m[0].primaryKey} : null;
+}
+
+// fetch -> { ok, body }
+function api(path,opts){
+  return fetch(path,opts).then(function(r){return r.json().then(function(j){return {ok:r.ok,body:j};});});
+}
+function post(path,data){
+  return api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data||{})});
+}
+
+function render(cols,rows){
+  curCols=cols;curRows=rows;editCtx=computeEditContext(cols);
+  edithint.textContent=editCtx?tr('editHint'):tr('readOnly');
+  addrowbtn.hidden=!editCtx;
+  if(!editCtx)hideAddForm();
+  exportbtn.hidden=cols.length===0; // экспорт доступен для любого непустого результата
+  exportmenu.hidden=true;
+  head.innerHTML='<tr>'+cols.map(function(c){return '<th>'+esc(c)+'</th>';}).join('')+
+    (editCtx?'<th></th>':'')+'</tr>';
+  tbody.innerHTML=rows.map(function(r,ri){
+    var cells=r.map(function(v,ci){
+      var attr=editCtx?' class="cell" data-r="'+ri+'" data-c="'+ci+'"':'';
+      return '<td'+attr+'>'+esc(v)+'</td>';
+    }).join('');
+    if(editCtx)cells+='<td class="actions" data-r="'+ri+'">'+trashHtml()+'</td>';
+    return '<tr>'+cells+'</tr>';
+  }).join('');
+}
+function trashHtml(){return '<span class="del" title="'+tr('rowDelTitle')+'">🗑</span>';}
+function showError(msg){head.innerHTML='';tbody.innerHTML='<tr><td class="err">'+esc(msg)+'</td></tr>';statusEl.textContent='';edithint.textContent='';addrowbtn.hidden=true;hideAddForm();exportbtn.hidden=true;exportmenu.hidden=true;}
+
+// --- экспорт текущего результата (целиком на странице) ---
+exportbtn.onclick=function(){exportmenu.hidden=!exportmenu.hidden;};
+Array.prototype.forEach.call(exportmenu.querySelectorAll('button'),function(b){
+  b.onclick=function(){exportmenu.hidden=true;doExport(b.getAttribute('data-fmt'));};
+});
+// RFC4180: экранируем поле, если в нём запятая, кавычка или перевод строки
+function csvCell(v){
+  var s=(v==null)?'':String(v);
+  return /[",\r\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+}
+function buildCSV(cols,rows){
+  var lines=[cols.map(csvCell).join(',')];
+  rows.forEach(function(r){lines.push(r.map(csvCell).join(','));});
+  return '﻿'+lines.join('\r\n'); // BOM — чтобы кириллица открывалась в Excel
+}
+function buildJSON(cols,rows){
+  var arr=rows.map(function(r){var o={};cols.forEach(function(c,i){o[c]=r[i];});return o;});
+  return JSON.stringify(arr,null,2);
+}
+function download(filename,mime,text){
+  var blob=new Blob([text],{type:mime});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;a.download=filename;document.body.appendChild(a);a.click();
+  document.body.removeChild(a);URL.revokeObjectURL(url);
+}
+function doExport(fmt){
+  if(!curCols.length)return;
+  var base=(editCtx?editCtx.table:'result');
+  if(fmt==='json')download(base+'.json','application/json;charset=utf-8',buildJSON(curCols,curRows));
+  else download(base+'.csv','text/csv;charset=utf-8',buildCSV(curCols,curRows));
+  statusEl.textContent=tr('exported',fmt.toUpperCase());
+}
+
+// --- добавление строки ---
+function hideAddForm(){addform.hidden=true;addform.innerHTML='';}
+addrowbtn.onclick=function(){buildAddForm();};
+function buildAddForm(){
+  if(!editCtx)return;
+  var meta=tablesMeta.filter(function(t){return t.name===editCtx.table;})[0];
+  if(!meta)return;
+  var fields=meta.columns.map(function(c){
+    return '<div class="field"><label>'+esc(c)+'</label><input data-col="'+esc(c)+'" spellcheck="false"></div>';
+  }).join('');
+  addform.innerHTML=fields+
+    '<div class="actions"><button class="run" id="saverow">'+tr('saveBtn')+'</button>'+
+    '<button class="btn2" id="cancelrow">'+tr('cancelBtn')+'</button></div><div id="adderr"></div>';
+  addform.hidden=false;
+  $('saverow').onclick=submitAddForm;
+  $('cancelrow').onclick=hideAddForm;
+  var first=addform.querySelector('input');if(first)first.focus();
+  Array.prototype.forEach.call(addform.querySelectorAll('input'),function(inp){
+    inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();submitAddForm();}});
+  });
+}
+function submitAddForm(){
+  var values={};
+  Array.prototype.forEach.call(addform.querySelectorAll('input[data-col]'),function(inp){
+    values[inp.getAttribute('data-col')]=inp.value;
+  });
+  post('/api/insert',{db:current,table:editCtx.table,values:values}).then(function(res){
+    if(!res.ok){$('adderr').textContent=res.body&&res.body.error?res.body.error:tr('errInsert');return;}
+    hideAddForm();
+    render(res.body.columns||[],res.body.rows||[]);
+    statusEl.textContent=tr('rowAdded');
+    loadTables(); // обновить счётчики таблиц слева
+  }).catch(function(e){var el=$('adderr');if(el)el.textContent=tr('net',e.message);});
+}
+
+// --- редактирование ячеек ---
+tbody.addEventListener('click',function(e){
+  var td=e.target.closest?e.target.closest('td.cell'):null;
+  if(!td||!editCtx||td.querySelector('input'))return;
+  startEdit(td);
+});
+function startEdit(td){
+  var ri=+td.getAttribute('data-r'),ci=+td.getAttribute('data-c');
+  var input=document.createElement('input');
+  input.className='celledit';input.value=String(curRows[ri][ci]);
+  td.textContent='';td.appendChild(input);input.focus();input.select();
+  input.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){e.preventDefault();saveEdit(td,ri,ci,input.value);}
+    else if(e.key==='Escape'){e.preventDefault();cancelEdit(td,ri,ci);}
+  });
+  input.addEventListener('blur',function(){cancelEdit(td,ri,ci);});
+}
+function cancelEdit(td,ri,ci){td.textContent=String(curRows[ri][ci]);}
+
+// --- удаление строки (со своим подтверждением, без нативного confirm) ---
+tbody.addEventListener('click',function(e){
+  var td=e.target.closest?e.target.closest('td.actions'):null;
+  if(!td||!editCtx)return;
+  if(e.target.classList.contains('del'))askDelete(td);
+  else if(e.target.classList.contains('delyes'))doDelete(td);
+  else if(e.target.classList.contains('delno'))td.innerHTML=trashHtml();
+});
+function askDelete(td){
+  td.innerHTML='<span class="cfm">'+tr('confirmDelRow')+'</span>'+
+    '<span class="delyes">'+tr('yes')+'</span><span class="delno">'+tr('no')+'</span>';
+}
+function doDelete(td){
+  var ri=+td.getAttribute('data-r'),pkIdx=curCols.indexOf(editCtx.pk),pkVal=curRows[ri][pkIdx];
+  td.innerHTML='<span class="cfm">…</span>';
+  post('/api/delete',{db:current,table:editCtx.table,primaryKey:{column:editCtx.pk,value:pkVal}})
+    .then(function(res){
+      if(!res.ok){showError(res.body&&res.body.error?res.body.error:tr('errDelete'));return;}
+      render(res.body.columns||[],res.body.rows||[]);
+      statusEl.textContent=tr('rowDeleted');
+      loadTables(); // обновить счётчики слева
+    })
+    .catch(function(e){showError(tr('net',e.message));});
+}
+function saveEdit(td,ri,ci,newVal){
+  var col=curCols[ci],pkIdx=curCols.indexOf(editCtx.pk),pkVal=curRows[ri][pkIdx];
+  var changes={};changes[col]=newVal;
+  post('/api/update',{db:current,table:editCtx.table,primaryKey:{column:editCtx.pk,value:pkVal},changes:changes})
+    .then(function(res){
+      if(!res.ok){statusEl.textContent='';showError(res.body&&res.body.error?res.body.error:tr('errSave'));return;}
+      var row=res.body.row||{};
+      // обновляем локальную строку по возвращённым значениям
+      curCols.forEach(function(c,i){if(c in row)curRows[ri][i]=row[c];});
+      td.textContent=String(col in row?row[col]:newVal);
+      statusEl.textContent=tr('rowSaved');
+    })
+    .catch(function(e){showError(tr('net',e.message));});
+}
+
+// --- SQL ---
+// silent=true — авто-запрос (клик по таблице, импорт): не пишем в историю
+function runSql(q,silent){
+  if(!current){showError(tr('selectDbFirst'));return;}
+  if(!(q||'').trim())return;
+  post('/api/query',{db:current,sql:q,noHistory:!!silent}).then(function(res){
+    if(!res.ok){showError(res.body&&res.body.error?res.body.error:tr('errQuery'));return;}
+    var b=res.body,s=b.stats||{};
+    render(b.columns||[],b.rows||[]);
+    statusEl.textContent=tr('statusRows',(s.rows!=null?s.rows:(b.rows||[]).length),(s.scanned!=null?s.scanned:0),(s.plan||''));
+    if(!silent){loadHistory();loadTables();} // историю и список таблиц (счётчики/CREATE/DROP) обновляем для ручных запросов
+  }).catch(function(e){showError(tr('net',e.message));});
+}
+
+// --- история запросов (хранится в служебной таблице query_history) ---
+var HIST_LIMIT=15;      // сколько записей показываем свёрнуто
+var histGroups=[];      // схлопнутые подряд идущие дубликаты
+var histExpanded=false; // раскрыт ли полный список
+
+// схлопнуть подряд идущие одинаковые SQL в группы со счётчиком
+function collapseHistory(items){
+  var groups=[];
+  items.forEach(function(it){
+    var last=groups[groups.length-1];
+    if(last&&last.sql===it.sql)last.count++;
+    else groups.push({sql:it.sql,count:1});
+  });
+  return groups;
+}
+
+function renderHistory(){
+  histlist.innerHTML='';
+  if(!histGroups.length){histlist.innerHTML='<div class="empty">'+tr('histEmpty')+'</div>';return;}
+  var shown=histExpanded?histGroups:histGroups.slice(0,HIST_LIMIT);
+  shown.forEach(function(g){
+    var el=document.createElement('div');
+    el.className='hitem';el.title=g.sql;
+    var t=document.createElement('span');t.className='htext';t.textContent=g.sql;
+    el.appendChild(t);
+    if(g.count>1){var x=document.createElement('span');x.className='hx';x.textContent='×'+g.count;el.appendChild(x);}
+    el.onclick=function(){setSql(g.sql);setView('data');sql.focus();};
+    histlist.appendChild(el);
+  });
+  if(histGroups.length>HIST_LIMIT){
+    var more=document.createElement('div');more.className='showall';
+    more.textContent=histExpanded?tr('histCollapse'):tr('histShowAll',histGroups.length);
+    more.onclick=function(){histExpanded=!histExpanded;renderHistory();};
+    histlist.appendChild(more);
+  }
+}
+
+function loadHistory(){
+  api('/api/history',{}).then(function(res){
+    if(!res.ok)return;
+    histGroups=collapseHistory(res.body||[]);
+    if(!histGroups.length)histExpanded=false;
+    renderHistory();
+  }).catch(function(){});
+}
+
+// очистка истории с инлайновым подтверждением (не нативный confirm)
+function askClearHistory(){
+  var box=$('histclear');
+  box.innerHTML='<span class="hclear" id="hclryes" title="'+tr('clearTitle')+'">'+tr('yes')+'</span>'+
+    '<span class="hclear" id="hclrno" title="'+tr('cancelTitle')+'">'+tr('no')+'</span>';
+  box.classList.remove('hclear');
+  box.style.display='flex';box.style.gap='2px';
+  $('hclryes').onclick=function(e){e.stopPropagation();doClearHistory();};
+  $('hclrno').onclick=function(e){e.stopPropagation();resetClearBtn();};
+}
+function resetClearBtn(){
+  var box=$('histclear');
+  box.innerHTML='🗑';box.classList.add('hclear');
+  box.removeAttribute('style');
+}
+function doClearHistory(){
+  post('/api/history/clear',{}).then(function(res){
+    resetClearBtn();
+    if(!res.ok){showError(res.body&&res.body.error?res.body.error:tr('errClearHist'));return;}
+    histExpanded=false;loadHistory();
+  }).catch(function(e){resetClearBtn();showError(tr('net',e.message));});
+}
+
+// --- таблицы выбранной базы ---
+function loadTables(active,runDefault){
+  if(!current){list.innerHTML='<div class="empty">'+tr('noDb')+'</div>';return;}
+  api('/api/tables?db='+encodeURIComponent(current),{}).then(function(res){
+    if(!res.ok){showError(tr('loadTablesErr'));return;}
+    var tables=res.body||[];
+    tablesMeta=tables; // для контекста редактирования и вкладки «Схема»
+    if(view==='schema')renderSchema();
+    list.innerHTML='';
+    if(!tables.length){list.innerHTML='<div class="empty">'+tr('noTables')+'</div>';}
+    tables.forEach(function(t){
+      var el=document.createElement('div');
+      el.className='item'+(t.name===active?' on':'');
+      var nm=document.createElement('span');nm.className='tname';nm.textContent=t.name;
+      var right=document.createElement('span');right.className='tright';
+      var cnt=document.createElement('span');cnt.className='cnt';cnt.textContent=t.rowCount;
+      var del=document.createElement('span');del.className='tdel';del.textContent='🗑';del.title=tr('tableDelTitle');
+      right.appendChild(cnt);right.appendChild(del);
+      el.appendChild(nm);el.appendChild(right);
+      el.onclick=function(){setSql('SELECT * FROM '+t.name+';');loadTables(t.name);runSql(sql.value,true);};
+      del.onclick=function(e){e.stopPropagation();askDropTable(el,t.name);};
+      list.appendChild(el);
+    });
+    if(runDefault&&tables.length){setSql('SELECT * FROM '+tables[0].name+';');loadTables(tables[0].name);runSql(sql.value,true);}
+    else if(runDefault){head.innerHTML='';tbody.innerHTML='';statusEl.textContent=tr('noTablesHint');}
+  }).catch(function(e){showError(tr('net',e.message));});
+}
+
+// удаление таблицы (инлайновое подтверждение, как в истории/удалении строки)
+function askDropTable(el,name){
+  el.onclick=null;
+  el.innerHTML='<span class="cfm">'+tr('confirmDelTable')+'</span>'+
+    '<span class="delyes">'+tr('yes')+'</span><span class="delno">'+tr('no')+'</span>';
+  el.querySelector('.delyes').onclick=function(e){e.stopPropagation();doDropTable(name);};
+  el.querySelector('.delno').onclick=function(e){e.stopPropagation();loadTables();};
+}
+function doDropTable(name){
+  post('/api/tables/delete',{db:current,table:name}).then(function(res){
+    if(!res.ok){showError(res.body&&res.body.error?res.body.error:tr('errDropTable'));loadTables();return;}
+    // если удалили таблицу, показанную в результате — очистим область
+    setSql('');head.innerHTML='';tbody.innerHTML='';statusEl.textContent='';edithint.textContent='';
+    addrowbtn.hidden=true;exportbtn.hidden=true;hideAddForm();
+    curCols=[];curRows=[];editCtx=null;
+    loadTables();
+  }).catch(function(e){showError(tr('net',e.message));loadTables();});
+}
+
+// --- список баз ---
+function selectDb(name){
+  current=name;curdb.textContent=name;
+  resetDelDb();$('deldb').hidden=false; // появилась база, которую можно удалить
+  Array.prototype.forEach.call(dblist.children,function(el){
+    el.classList.toggle('on',el.getAttribute('data-db')===name);
+  });
+  loadTables(null,false); // только список таблиц, без авто-запроса
+  // результат пуст — запрос выполнится по клику на таблицу или кнопке «Выполнить»
+  head.innerHTML='';tbody.innerHTML='';statusEl.textContent='';edithint.textContent='';
+  addrowbtn.hidden=true;exportbtn.hidden=true;exportmenu.hidden=true;hideAddForm();
+}
+function loadDatabases(select){
+  api('/api/databases',{}).then(function(res){
+    if(!res.ok){showLogin();return;}
+    var dbs=res.body||[];
+    dblist.innerHTML='';
+    if(!dbs.length){dblist.innerHTML='<div class="empty">'+tr('noDbsHint')+'</div>';}
+    dbs.forEach(function(d){
+      var el=document.createElement('div');
+      el.className='item';el.setAttribute('data-db',d.name);el.setAttribute('data-tables',d.tables);
+      el.innerHTML='<span>'+esc(d.name)+'</span><span class="cnt">'+tr('tablesCount',d.tables)+'</span>';
+      el.onclick=function(){selectDb(d.name);};
+      dblist.appendChild(el);
+    });
+    var pick=select||(dbs.length?dbs[0].name:null);
+    if(pick)selectDb(pick);
+    else{current=null;curdb.textContent=tr('noDb');resetDelDb();$('deldb').hidden=true;list.innerHTML='<div class="empty">'+tr('noDb')+'</div>';head.innerHTML='';tbody.innerHTML='';statusEl.textContent='';}
+  }).catch(function(e){showError(tr('net',e.message));});
+}
+
+// --- создание базы ---
+$('adddb').onclick=function(){
+  var name=($('newdb').value||'').trim();
+  if(!name)return;
+  post('/api/databases',{name:name}).then(function(res){
+    if(!res.ok){alert(res.body&&res.body.error?res.body.error:tr('errCreateDb'));return;}
+    $('newdb').value='';
+    loadDatabases(name);
+  }).catch(function(e){alert(tr('net',e.message));});
+};
+$('newdb').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();$('adddb').click();}});
+$('histclear').onclick=function(){if($('histclear').classList.contains('hclear'))askClearHistory();};
+
+// --- удаление базы (инлайновое подтверждение, без нативного confirm) ---
+function resetDelDb(){$('deldbConfirm').hidden=true;if(current)$('deldb').hidden=false;}
+$('deldb').onclick=function(){
+  if(!current)return;
+  $('deldb').hidden=true;
+  $('deldbConfirm').querySelector('.dcq').textContent=tr('confirmDelDb',current);
+  $('deldbConfirm').hidden=false;
+};
+$('deldbNo').onclick=function(){resetDelDb();};
+$('deldbYes').onclick=function(){
+  var name=current;
+  post('/api/databases/delete',{name:name}).then(function(res){
+    $('deldbConfirm').hidden=true;
+    if(!res.ok){alert(res.body&&res.body.error?res.body.error:tr('errDelDb'));resetDelDb();return;}
+    current=null;loadDatabases(); // выберет другую базу или покажет «нет базы»
+  }).catch(function(e){resetDelDb();alert(tr('net',e.message));});
+};
+
+// --- импорт SQL из файла (выполняется как обычный скрипт, не пишется в историю) ---
+$('importbtn').onclick=function(){$('sqlfile').click();};
+$('sqlfile').addEventListener('change',function(){
+  var f=this.files&&this.files[0];if(!f)return;
+  var reader=new FileReader();
+  reader.onload=function(){runImport(String(reader.result||''));};
+  reader.readAsText(f);
+  this.value=''; // чтобы повторный выбор того же файла тоже срабатывал
+});
+function runImport(text){
+  if(!current){showError(tr('selectDbFirst'));return;}
+  if(!text.trim()){statusEl.textContent=tr('fileEmpty');return;}
+  setSql(text); // показать импортируемый код в редакторе
+  post('/api/query',{db:current,sql:text,noHistory:true}).then(function(res){
+    if(!res.ok){showError(res.body&&res.body.error?res.body.error:tr('errImport'));return;}
+    var b=res.body,s=b.stats||{};
+    render(b.columns||[],b.rows||[]);
+    statusEl.textContent=tr('importDone',(s.plan||''));
+    loadTables(null,false); // структура/данные могли измениться — обновим список таблиц
+  }).catch(function(e){showError(tr('net',e.message));});
+}
+
+// --- запуск/вход/выход ---
+$('run').onclick=function(){runSql(sql.value);};
+
+// --- переключатель видов: Данные / Схема ---
+function setView(v){
+  view=v;
+  $('tabData').classList.toggle('on',v==='data');
+  $('tabSchema').classList.toggle('on',v==='schema');
+  $('dataview').hidden=v!=='data';
+  $('schemaview').hidden=v!=='schema';
+  if(v==='schema')renderSchema();
+}
+$('tabData').onclick=function(){setView('data');};
+$('tabSchema').onclick=function(){setView('schema');};
+
+// Схема всех таблиц текущей базы (только чтение).
+function renderSchema(){
+  var sv=$('schemaview');
+  if(!current){sv.innerHTML='<div class="schema-empty">'+tr('schemaSelectDb')+'</div>';return;}
+  if(!tablesMeta.length){sv.innerHTML='<div class="schema-empty">'+esc(tr('schemaNoTables',current))+'</div>';return;}
+  sv.innerHTML=tablesMeta.map(function(t){
+    var cols=(t.schema||[]).map(function(c){
+      return '<div class="col"><span class="cname">'+esc(c.name)+'</span>'+
+        '<span class="ctype">'+esc(c.type)+'</span>'+
+        (c.pk?'<span class="pkbadge">'+tr('pkBadge')+'</span>':'')+'</div>';
+    }).join('');
+    return '<div class="tcard"><div class="thead">'+
+      '<span class="tname">'+esc(t.name)+'</span>'+
+      '<span class="tmeta">'+tr('schemaMeta',(t.schema?t.schema.length:0),t.rowCount)+'</span>'+
+      '</div>'+cols+'</div>';
+  }).join('');
+}
+
+function showApp(){$('login').setAttribute('hidden','');$('app').removeAttribute('hidden');loadDatabases();loadHistory();}
+function showLogin(){$('app').setAttribute('hidden','');$('login').removeAttribute('hidden');}
+
+$('loginForm').addEventListener('submit',function(e){
+  e.preventDefault();
+  $('lerr').textContent='';
+  post('/api/login',{user:$('luser').value,password:$('lpass').value}).then(function(res){
+    if(res.ok)showApp();
+    else $('lerr').textContent=res.body&&res.body.error?res.body.error:tr('errLogin');
+  }).catch(function(err){$('lerr').textContent=tr('net',err.message);});
+});
+$('logout').onclick=function(){post('/api/logout',{}).then(function(){current=null;showLogin();});};
+
+// --- переключатель языка (RU/EN), выбор запоминается в localStorage ---
+$('langbtn').onclick=function(){LANG=(LANG==='ru'?'en':'ru');applyLang();};
+applyLang(); // применить сохранённый язык к статике (в т.ч. на экране входа)
+
+// при загрузке: проверяем сессию
+api('/api/databases',{}).then(function(res){if(res.ok)showApp();else showLogin();}).catch(showLogin);
+</script>
+</body>
+</html>
