@@ -32,6 +32,7 @@ import { dirname, join } from "node:path";
 
 import { Database } from "./database.ts";
 import { executeProgram, explain, type ExecResult } from "./sql/executor.ts";
+import { parseCsv } from "./csv.ts";
 
 const root = process.argv[2] ?? "studio-data";
 const port = Number(process.argv[3] ?? process.env["PORT"] ?? 8080);
@@ -308,6 +309,71 @@ async function handleDropTable(req: IncomingMessage, res: ServerResponse): Promi
     if (!table) throw new Error("не указана таблица");
     db.dropTable(table);
     sendJson(res, 200, { ok: true, table });
+  } catch (e) {
+    sendJson(res, 400, { error: (e as Error).message });
+  }
+}
+
+/** Импорт CSV в таблицу: маппинг колонок (по заголовку или позиционно) + вставка. */
+async function handleImportCsv(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  let body: { db?: string; table?: string; csv?: string; header?: boolean };
+  try {
+    body = await readJson(req);
+  } catch {
+    sendJson(res, 400, { error: "ожидался JSON { db, table, csv, header }" });
+    return;
+  }
+  const db = resolveDb(body.db ?? null, res);
+  if (!db) return;
+  try {
+    const table = body.table ?? "";
+    if (!db.hasTable(table)) throw new Error(`нет таблицы ${table}`);
+    const schema = db.table(table).schema;
+    const cols = schema.columns.map((c) => c.name);
+
+    // разобрать CSV, отбросить пустые строки
+    const all = parseCsv(body.csv ?? "").filter((r) => !(r.length === 1 && r[0] === ""));
+    let colOrder: string[]; // имя колонки CSV на каждой позиции
+    let dataRows: string[][];
+    if (body.header) {
+      if (all.length === 0) throw new Error("пустой CSV");
+      colOrder = all[0]!;
+      for (const c of cols) {
+        if (!colOrder.includes(c)) throw new Error(`в заголовке CSV нет колонки «${c}»`);
+      }
+      dataRows = all.slice(1);
+    } else {
+      colOrder = cols; // без заголовка — позиционно в порядке схемы
+      dataRows = all;
+    }
+
+    // вставляем в одной транзакции (быстро, один fsync); неверные строки пропускаем
+    const errors: { row: number; message: string }[] = [];
+    let inserted = 0;
+    db.begin();
+    try {
+      dataRows.forEach((r, idx) => {
+        try {
+          if (r.length !== colOrder.length) {
+            throw new Error(`ожидалось ${colOrder.length} полей, получено ${r.length}`);
+          }
+          const lits = schema.columns.map((c) => {
+            const pos = colOrder.indexOf(c.name);
+            if (pos < 0) throw new Error(`нет значения для колонки ${c.name}`);
+            return formatLiteral(c.type, r[pos]);
+          });
+          executeProgram(db, `INSERT INTO ${table} (${cols.join(", ")}) VALUES (${lits.join(", ")})`);
+          inserted++;
+        } catch (e) {
+          if (errors.length < 50) errors.push({ row: idx + 1, message: (e as Error).message });
+        }
+      });
+      db.commit();
+    } catch (e) {
+      db.rollback();
+      throw e;
+    }
+    sendJson(res, 200, { inserted, failed: dataRows.length - inserted, errors });
   } catch (e) {
     sendJson(res, 400, { error: (e as Error).message });
   }
@@ -639,6 +705,7 @@ const server = createServer((req, res) => {
       return;
     }
     if (method === "POST" && path === "/api/explain") return void handleExplain(req, res);
+    if (method === "POST" && path === "/api/import-csv") return void handleImportCsv(req, res);
     if (method === "POST" && path === "/api/insert") return void handleInsert(req, res);
     if (method === "POST" && path === "/api/delete") return void handleDelete(req, res);
     if (method === "POST" && path === "/api/update") return void handleUpdate(req, res);

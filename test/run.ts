@@ -19,6 +19,7 @@ import "./droptable.test.ts";
 import "./tree-structure.test.ts";
 import "./plan.test.ts";
 import "./pages.test.ts";
+import "./csv.test.ts";
 import { report } from "./harness.ts";
 
 report();

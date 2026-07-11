@@ -116,6 +116,17 @@
   .pdetail{font-family:var(--mono);font-size:12.5px;color:var(--text)}
   .pmeta{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap}
 
+  /* --- форма импорта CSV --- */
+  .csv-form{border:1px solid var(--border);border-radius:10px;padding:14px 16px;background:var(--surface2);
+    display:flex;flex-direction:column;gap:12px;margin-top:12px}
+  .csv-ftitle{font-size:13px;font-weight:600;color:var(--text)}
+  .csv-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .csv-row label{font-size:13px;color:var(--muted)}
+  .csv-row select{background:var(--bg);color:var(--text);border:1px solid var(--border);
+    border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:13px}
+  .csv-check{display:inline-flex;align-items:center;gap:7px;color:var(--text);cursor:pointer}
+  .csv-fname{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+
   /* --- инспектор страниц / WAL --- */
   .pages-canvas{overflow:auto;flex:1;min-height:0;padding:2px}
   .pg-grid{display:flex;flex-wrap:wrap;gap:12px}
@@ -299,9 +310,11 @@
           <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:10px">
             <input type="file" id="sqlfile" accept=".sql,.txt" hidden>
             <button class="btn2" id="importbtn" title="Импортировать и выполнить .sql-файл" data-i18n="importBtn" data-i18n-title="importTitle">&#8593; Импорт SQL</button>
+            <button class="btn2" id="csvbtn" data-i18n="csvBtn" data-i18n-title="csvTitle" title="Импортировать CSV в таблицу">&#8593; CSV</button>
             <button class="btn2" id="explainbtn" title="Показать план выполнения (EXPLAIN)" data-i18n="explainBtn" data-i18n-title="explainTitle">&#9881; План</button>
             <button class="run" id="run" data-i18n="runBtn">&#9654; Выполнить</button>
           </div>
+          <div class="csv-form" id="csvform" hidden></div>
         </div>
         <div class="res">
           <div class="head">
@@ -360,6 +373,9 @@ var I18N={
     walTitle:'Журнал (WAL)', walEmpty:'пуст — все транзакции зафиксированы (checkpoint выполнен)',
     walCommitted:'зафиксирована', walUncommitted:'не зафиксирована', walFrames:'кадров страниц',
     walHint:'WAL хранит образы изменённых страниц до применения к файлам данных. При сбое между записью в WAL и checkpoint восстановление проигрывает журнал заново; после checkpoint журнал очищается.',
+    csvBtn:'⬆ CSV', csvTitle:'Импортировать CSV в таблицу', csvHeaderLabel:'первая строка — заголовок',
+    csvChoose:'выбрать файл', csvNoFile:'файл не выбран', csvImport:'Импортировать',
+    csvNeedTable:'сначала создайте таблицу в этой базе', csvRowLabel:'строка', csvErrTitle:'ошибки импорта',
     importBtn:'↑ Импорт SQL', runBtn:'▶ Выполнить', resultLabel:'Результат',
     addRowBtn:'+ строка', exportBtn:'⬇ Экспорт', logoutBtn:'Выйти',
     delDbBtn:'🗑 Удалить БД', yes:'да', no:'нет', newDbPh:'имя новой БД',
@@ -385,6 +401,7 @@ var I18N={
     histShowAll:function(n){return 'показать все ('+n+')';},
     tablesCount:function(n){return n+' табл.';},
     importDone:function(pl){return 'импорт выполнен · '+pl;},
+    csvDone:function(ins,fail){return 'импортировано строк: '+ins+(fail?' · ошибок: '+fail:'');},
     confirmDelDb:function(name){return 'удалить «'+name+'»?';},
     net:function(m){return 'сеть: '+m;},
     schemaNoTables:function(db){return 'в базе '+db+' нет таблиц';},
@@ -405,6 +422,9 @@ var I18N={
     walTitle:'Write-ahead log (WAL)', walEmpty:'empty — all transactions committed (checkpoint done)',
     walCommitted:'committed', walUncommitted:'not committed', walFrames:'page frames',
     walHint:'The WAL holds images of changed pages before they are applied to the data files. After a crash between the WAL write and checkpoint, recovery replays the log; after checkpoint the log is cleared.',
+    csvBtn:'⬆ CSV', csvTitle:'Import CSV into a table', csvHeaderLabel:'first row is a header',
+    csvChoose:'choose file', csvNoFile:'no file chosen', csvImport:'Import',
+    csvNeedTable:'create a table in this database first', csvRowLabel:'row', csvErrTitle:'import errors',
     importBtn:'↑ Import SQL', runBtn:'▶ Run', resultLabel:'Result',
     addRowBtn:'+ row', exportBtn:'⬇ Export', logoutBtn:'Sign out',
     delDbBtn:'🗑 Delete DB', yes:'yes', no:'no', newDbPh:'new DB name',
@@ -430,6 +450,7 @@ var I18N={
     histShowAll:function(n){return 'show all ('+n+')';},
     tablesCount:function(n){return n+' tbl.';},
     importDone:function(pl){return 'import done · '+pl;},
+    csvDone:function(ins,fail){return 'imported rows: '+ins+(fail?' · errors: '+fail:'');},
     confirmDelDb:function(name){return 'delete “'+name+'”?';},
     net:function(m){return 'network: '+m;},
     schemaNoTables:function(db){return 'database '+db+' has no tables';},
@@ -906,6 +927,64 @@ function runImport(text){
     statusEl.textContent=tr('importDone',(s.plan||''));
     loadTables(null,false); // структура/данные могли измениться — обновим список таблиц
   }).catch(function(e){showError(tr('net',e.message));});
+}
+
+// --- импорт CSV в таблицу ---
+var csvFile=null; // выбранный CSV-файл
+$('csvbtn').onclick=function(){openCsvForm();};
+function openCsvForm(){
+  if(!current){showError(tr('selectDbFirst'));return;}
+  if(!tablesMeta.length){showError(tr('csvNeedTable'));return;}
+  setView('data');
+  var names=tablesMeta.map(function(t){return t.name;});
+  csvFile=null;
+  $('csvform').innerHTML=
+    '<div class="csv-ftitle">'+tr('csvTitle')+'</div>'+
+    '<div class="csv-row"><label>'+tr('treeTable')+':</label>'+
+      '<select id="csvTableSel">'+names.map(function(n){return '<option>'+esc(n)+'</option>';}).join('')+'</select>'+
+      '<label class="csv-check"><input type="checkbox" id="csvHeaderChk" checked> '+tr('csvHeaderLabel')+'</label></div>'+
+    '<div class="csv-row"><input type="file" id="csvFileInp" accept=".csv,.txt" hidden>'+
+      '<button class="btn2" id="csvChooseBtn">'+tr('csvChoose')+'</button>'+
+      '<span class="csv-fname" id="csvFileName">'+tr('csvNoFile')+'</span></div>'+
+    '<div class="csv-row"><button class="run" id="csvGoBtn">'+tr('csvImport')+'</button>'+
+      '<button class="btn2" id="csvCancelBtn">'+tr('cancelBtn')+'</button></div>';
+  $('csvform').hidden=false;
+  $('csvChooseBtn').onclick=function(){$('csvFileInp').click();};
+  $('csvFileInp').addEventListener('change',function(){
+    csvFile=(this.files&&this.files[0])||null;
+    $('csvFileName').textContent=csvFile?csvFile.name:tr('csvNoFile');
+  });
+  $('csvCancelBtn').onclick=function(){$('csvform').hidden=true;};
+  $('csvGoBtn').onclick=function(){runCsvImport($('csvTableSel').value,$('csvHeaderChk').checked);};
+}
+function runCsvImport(table,header){
+  if(!csvFile){$('csvFileName').textContent=tr('csvNoFile');return;}
+  var reader=new FileReader();
+  reader.onload=function(){
+    post('/api/import-csv',{db:current,table:table,csv:String(reader.result||''),header:header}).then(function(res){
+      if(!res.ok){showError(res.body&&res.body.error?res.body.error:tr('errImport'));return;}
+      $('csvform').hidden=true;
+      loadTables();
+      var errs=res.body.errors||[];
+      if(errs.length){
+        showCsvErrors(errs);
+      } else {
+        // показать данные таблицы, куда импортировали (render не трогает статус)
+        post('/api/query',{db:current,sql:'SELECT * FROM '+table,noHistory:true}).then(function(qr){
+          if(qr.ok)render(qr.body.columns||[],qr.body.rows||[]);
+        });
+      }
+      statusEl.textContent=tr('csvDone',res.body.inserted,res.body.failed);
+    }).catch(function(e){showError(tr('net',e.message));});
+  };
+  reader.readAsText(csvFile);
+}
+function showCsvErrors(errors){
+  $('planview').hidden=true;$('grid').hidden=false;
+  addrowbtn.hidden=true;exportbtn.hidden=true;exportmenu.hidden=true;edithint.textContent='';
+  curCols=[];curRows=[];editCtx=null;
+  head.innerHTML='<tr><th>'+tr('csvErrTitle')+'</th></tr>';
+  tbody.innerHTML=errors.map(function(e){return '<tr><td class="err">'+tr('csvRowLabel')+' '+e.row+': '+esc(e.message)+'</td></tr>';}).join('');
 }
 
 // --- запуск/вход/выход ---
