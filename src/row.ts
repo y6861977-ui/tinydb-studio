@@ -67,6 +67,15 @@ export function encodeValueKey(type: ColumnType, value: Value): string {
   return value as string; // TEXT — как есть
 }
 
+/** Декодировать order-preserving строковый ключ обратно в значение (обратно к encodeValueKey). */
+export function decodeValueKey(type: ColumnType, key: string): Value {
+  if (type === "INTEGER") {
+    const b = Buffer.from(key, "latin1");
+    return Number(b.readBigUInt64BE(0) - (1n << 63n));
+  }
+  return key; // TEXT — как есть
+}
+
 /** Закодировать значение первичного ключа в строковый ключ B+-дерева. */
 export function encodeKey(schema: TableSchema, value: Value): string {
   return encodeValueKey(columnOf(schema, schema.primaryKey).type, value);

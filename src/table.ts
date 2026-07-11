@@ -28,9 +28,32 @@ import {
   deserializeRow,
   encodeKey,
   encodeValueKey,
+  decodeValueKey,
   rowToTreeValue,
   treeValueToBuf,
 } from "./row.ts";
+
+/** Узел дерева таблицы с декодированными ключами (для визуализации). */
+export interface TableTreeNode {
+  pageNo: number;
+  type: "leaf" | "internal";
+  keys: Value[];
+  children?: number[];
+  next?: number;
+  bytes: number;
+}
+
+/** Структурная карта дерева таблицы (ключи = значения первичного ключа). */
+export interface TableTreeView {
+  table: string;
+  primaryKey: string;
+  root: number;
+  depth: number;
+  pageCount: number;
+  count: number;
+  pageSize: number;
+  nodes: TableTreeNode[];
+}
 
 export class Table {
   readonly schema: TableSchema;
@@ -82,6 +105,32 @@ export class Table {
   /** Число строк. */
   get count(): number {
     return this.tree.size;
+  }
+
+  /**
+   * Структурная карта основного B+-дерева таблицы с ключами, декодированными
+   * в значения первичного ключа (для визуализации в Studio).
+   */
+  treeStructure(): TableTreeView {
+    const s = this.tree.structure();
+    const pkType = columnOf(this.schema, this.schema.primaryKey).type;
+    return {
+      table: this.schema.name,
+      primaryKey: this.schema.primaryKey,
+      root: s.root,
+      depth: s.depth,
+      pageCount: s.pageCount,
+      count: s.count,
+      pageSize: s.pageSize,
+      nodes: s.nodes.map((n) => ({
+        pageNo: n.pageNo,
+        type: n.type,
+        keys: n.keys.map((k) => decodeValueKey(pkType, k)),
+        children: n.children,
+        next: n.next,
+        bytes: n.bytes,
+      })),
+    };
   }
 
   // --- вторичные индексы --------------------------------------------------

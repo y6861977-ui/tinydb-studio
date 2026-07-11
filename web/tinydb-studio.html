@@ -76,6 +76,32 @@
   .showall{padding:6px 10px;font-size:12px;color:var(--accent);cursor:pointer;user-select:none}
   .showall:hover{text-decoration:underline}
 
+  /* --- визуализатор B+-дерева --- */
+  .tree-bar{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+  .tree-bar label{font-size:13px;color:var(--muted)}
+  .tree-bar select{background:var(--bg);color:var(--text);border:1px solid var(--border);
+    border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:13px}
+  .tree-bar select:focus{outline:none;border-color:var(--accent)}
+  .tree-stats{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .tree-legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-left:auto}
+  .tree-legend span{display:inline-flex;align-items:center;gap:6px}
+  .tree-legend i{width:12px;height:12px;border-radius:3px;display:inline-block;border:1px solid var(--border)}
+  .tree-legend i.li{background:var(--accent-bg);border-color:var(--accent)}
+  .tree-legend i.ii{background:var(--surface)}
+  .tree-canvas{overflow:auto;border:1px solid var(--border);border-radius:10px;padding:12px;
+    background:var(--bg);flex:1;min-height:0}
+  .treesvg .tedge{fill:none;stroke:var(--border);stroke-width:1.5}
+  .treesvg .tnext{fill:none;stroke:var(--accent);stroke-width:1.4;stroke-dasharray:4 3;opacity:.75}
+  .treesvg .tarrowhead{fill:var(--accent)}
+  .treesvg .tnode rect{stroke:var(--border)}
+  .treesvg .tint rect{fill:var(--surface)}
+  .treesvg .tleaf rect{fill:var(--accent-bg);stroke:var(--accent)}
+  .treesvg .troot rect{stroke:var(--accent);stroke-width:2}
+  .treesvg .tkey{fill:var(--text);font-family:var(--mono);font-size:13px;text-anchor:middle;dominant-baseline:central}
+  .treesvg .tkey.tempty{fill:var(--muted)}
+  .treesvg .tsep{stroke:var(--border)}
+  .treesvg .tpage{fill:var(--muted);font-family:var(--mono);font-size:10px}
+
   .main{flex:1;min-width:0;padding:20px 24px;display:flex;flex-direction:column;gap:18px;overflow:hidden}
   .tabs{display:inline-flex;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:3px;gap:2px;align-self:flex-start}
   .tabs button{background:transparent;color:var(--muted);border:none;border-radius:6px;padding:7px 16px;
@@ -221,6 +247,7 @@
       <div class="tabs">
         <button id="tabData" class="on" data-i18n="tabData">Данные</button>
         <button id="tabSchema" data-i18n="tabSchema">Схема</button>
+        <button id="tabTree" data-i18n="tabTree">Дерево</button>
       </div>
       <div id="dataview">
         <div>
@@ -254,6 +281,7 @@
         </div>
       </div>
       <div id="schemaview" hidden></div>
+      <div id="treeview" hidden></div>
     </div>
   </div>
 </div>
@@ -278,7 +306,11 @@ var I18N={
     brandSub:'своя SQL-база с нуля', loginTagline:'вход в панель управления',
     loginUser:'Логин', loginPass:'Пароль', loginBtn:'Войти',
     dbsHeader:'Базы данных', tablesHeader:'Таблицы', historyHeader:'История запросов',
-    tabData:'Данные', tabSchema:'Схема', sqlLabel:'SQL-запрос',
+    tabData:'Данные', tabSchema:'Схема', tabTree:'Дерево', sqlLabel:'SQL-запрос',
+    treeTable:'таблица', treePages:'страниц', treeKeys:'ключей', treeHeight:'высота',
+    treeRoot:'корень', treeSelectDb:'выберите базу данных',
+    treeEmpty:'в дереве нет ключей — добавьте строки',
+    treeLeaf:'лист', treeInternal:'внутренний узел',
     importBtn:'↑ Импорт SQL', runBtn:'▶ Выполнить', resultLabel:'Результат',
     addRowBtn:'+ строка', exportBtn:'⬇ Экспорт', logoutBtn:'Выйти',
     delDbBtn:'🗑 Удалить БД', yes:'да', no:'нет', newDbPh:'имя новой БД',
@@ -313,7 +345,11 @@ var I18N={
     brandSub:'your SQL database from scratch', loginTagline:'sign in to the control panel',
     loginUser:'Username', loginPass:'Password', loginBtn:'Sign in',
     dbsHeader:'Databases', tablesHeader:'Tables', historyHeader:'Query history',
-    tabData:'Data', tabSchema:'Schema', sqlLabel:'SQL query',
+    tabData:'Data', tabSchema:'Schema', tabTree:'Tree', sqlLabel:'SQL query',
+    treeTable:'table', treePages:'pages', treeKeys:'keys', treeHeight:'height',
+    treeRoot:'root', treeSelectDb:'select a database',
+    treeEmpty:'tree is empty — add some rows',
+    treeLeaf:'leaf', treeInternal:'internal node',
     importBtn:'↑ Import SQL', runBtn:'▶ Run', resultLabel:'Result',
     addRowBtn:'+ row', exportBtn:'⬇ Export', logoutBtn:'Sign out',
     delDbBtn:'🗑 Delete DB', yes:'yes', no:'no', newDbPh:'new DB name',
@@ -370,6 +406,7 @@ function applyLang(){
     loadHistory();
     if(current)loadTables(null,false); else curdb.textContent=tr('noDb');
     if(view==='schema')renderSchema();
+    if(view==='tree')renderTree();
     edithint.textContent=editCtx?tr('editHint'):(curCols.length?tr('readOnly'):'');
   }
 }
@@ -791,12 +828,112 @@ function setView(v){
   view=v;
   $('tabData').classList.toggle('on',v==='data');
   $('tabSchema').classList.toggle('on',v==='schema');
+  $('tabTree').classList.toggle('on',v==='tree');
   $('dataview').hidden=v!=='data';
   $('schemaview').hidden=v!=='schema';
+  $('treeview').hidden=v!=='tree';
   if(v==='schema')renderSchema();
+  if(v==='tree')renderTree();
 }
 $('tabData').onclick=function(){setView('data');};
 $('tabSchema').onclick=function(){setView('schema');};
+$('tabTree').onclick=function(){setView('tree');};
+
+// --- визуализатор B+-дерева (вкладка «Дерево») ---
+var treeTable=null; // выбранная в этой вкладке таблица
+function renderTree(){
+  var sv=$('treeview');
+  if(!current){sv.innerHTML='<div class="schema-empty">'+tr('treeSelectDb')+'</div>';return;}
+  if(!tablesMeta.length){sv.innerHTML='<div class="schema-empty">'+esc(tr('schemaNoTables',current))+'</div>';return;}
+  var names=tablesMeta.map(function(t){return t.name;});
+  if(names.indexOf(treeTable)<0)treeTable=names[0];
+  sv.innerHTML=
+    '<div class="tree-bar">'+
+      '<label>'+tr('treeTable')+':</label>'+
+      '<select id="treeSel">'+names.map(function(n){return '<option'+(n===treeTable?' selected':'')+'>'+esc(n)+'</option>';}).join('')+'</select>'+
+      '<span class="tree-stats" id="treeStats"></span>'+
+      '<span class="tree-legend"><span><i class="li"></i>'+tr('treeLeaf')+'</span><span><i class="ii"></i>'+tr('treeInternal')+'</span></span>'+
+    '</div>'+
+    '<div class="tree-canvas" id="treeCanvas"></div>';
+  $('treeSel').onchange=function(){treeTable=this.value;renderTree();};
+  api('/api/tree?db='+encodeURIComponent(current)+'&table='+encodeURIComponent(treeTable),{}).then(function(res){
+    if(!res.ok){$('treeCanvas').innerHTML='<div class="schema-empty">'+esc(res.body&&res.body.error?res.body.error:'—')+'</div>';return;}
+    drawTree(res.body);
+  }).catch(function(e){$('treeCanvas').innerHTML='<div class="schema-empty">'+esc(tr('net',e.message))+'</div>';});
+}
+
+function drawTree(tv){
+  $('treeStats').textContent=tr('treePages')+': '+tv.pageCount+' · '+tr('treeKeys')+': '+tv.count+' · '+tr('treeHeight')+': '+tv.depth;
+  var canvas=$('treeCanvas');
+  if(!tv.nodes.length||tv.count===0){canvas.innerHTML='<div class="schema-empty">'+tr('treeEmpty')+'</div>';return;}
+  var byPage={}; tv.nodes.forEach(function(n){byPage[n.pageNo]=n;});
+  // уровни сверху вниз (дерево сбалансировано — все листья на нижнем уровне)
+  var levels=[],curL=[tv.root];
+  while(curL.length){
+    levels.push(curL.slice());
+    var nx=[];
+    curL.forEach(function(pg){var n=byPage[pg];if(n&&n.type==='internal')n.children.forEach(function(c){nx.push(c);});});
+    curL=nx;
+  }
+  function keyLabels(n){
+    var ks=n.keys.map(function(k){return String(k);});
+    if(ks.length>10)ks=ks.slice(0,7).concat(['…'],ks.slice(-2)); // длинные узлы подрезаем
+    return ks;
+  }
+  var NODE_H=38,VGAP=64,HPAD=10,CELL_PAD=12,MIN_CELL=22,GAP=26;
+  function nodeWidth(n){
+    var L=keyLabels(n);
+    if(!L.length)return 46;
+    var w=HPAD*2; L.forEach(function(t){w+=Math.max(MIN_CELL,t.length*8+CELL_PAD);});
+    return w;
+  }
+  var layout={},yLevel=[];
+  for(var i=0;i<levels.length;i++)yLevel[i]=i*(NODE_H+VGAP)+14;
+  var leafLv=levels.length-1,cx=10;
+  levels[leafLv].forEach(function(pg){var n=byPage[pg],w=nodeWidth(n);layout[pg]={w:w,x:cx,y:yLevel[leafLv],node:n};cx+=w+GAP;});
+  for(var lv=leafLv-1;lv>=0;lv--){
+    levels[lv].forEach(function(pg){
+      var n=byPage[pg],w=nodeWidth(n),kids=n.children.map(function(c){return layout[c];}).filter(Boolean),x;
+      if(kids.length){var mn=kids[0].x,mx=kids[kids.length-1].x+kids[kids.length-1].w;x=(mn+mx)/2-w/2;}else x=10;
+      layout[pg]={w:w,x:x,y:yLevel[lv],node:n};
+    });
+  }
+  var maxX=0,maxY=0;
+  Object.keys(layout).forEach(function(pg){var L=layout[pg];maxX=Math.max(maxX,L.x+L.w);maxY=Math.max(maxY,L.y+NODE_H);});
+  var W=Math.ceil(maxX+14),H=Math.ceil(maxY+14);
+  var edges=[],nexts=[],boxes=[];
+  Object.keys(layout).forEach(function(pg){
+    var L=layout[pg],n=L.node;
+    if(n.type==='internal')n.children.forEach(function(c){
+      var K=layout[c];if(!K)return;
+      var x1=L.x+L.w/2,y1=L.y+NODE_H,x2=K.x+K.w/2,y2=K.y,my=(y1+y2)/2;
+      edges.push('<path d="M'+x1+' '+y1+' C '+x1+' '+my+' '+x2+' '+my+' '+x2+' '+y2+'" class="tedge"/>');
+    });
+  });
+  levels[leafLv].forEach(function(pg){
+    var n=byPage[pg];if(n.next&&layout[n.next]){
+      var L=layout[pg],K=layout[n.next],yy=L.y+NODE_H/2;
+      nexts.push('<path d="M'+(L.x+L.w)+' '+yy+' L '+(K.x-2)+' '+yy+'" class="tnext" marker-end="url(#tar)"/>');
+    }
+  });
+  Object.keys(layout).forEach(function(pg){
+    var L=layout[pg],n=L.node,cls='tnode '+(n.type==='leaf'?'tleaf':'tint')+(String(pg)===String(tv.root)?' troot':'');
+    var g='<g class="'+cls+'"><rect x="'+L.x+'" y="'+L.y+'" width="'+L.w+'" height="'+NODE_H+'" rx="7"/>';
+    var labels=keyLabels(n),xx=L.x+HPAD;
+    if(!labels.length){g+='<text x="'+(L.x+L.w/2)+'" y="'+(L.y+NODE_H/2)+'" class="tkey tempty">пусто</text>';}
+    else labels.forEach(function(t,idx){
+      var cw=Math.max(MIN_CELL,t.length*8+CELL_PAD);
+      g+='<text x="'+(xx+cw/2)+'" y="'+(L.y+NODE_H/2)+'" class="tkey">'+esc(t)+'</text>';
+      if(idx<labels.length-1)g+='<line x1="'+(xx+cw)+'" y1="'+L.y+'" x2="'+(xx+cw)+'" y2="'+(L.y+NODE_H)+'" class="tsep"/>';
+      xx+=cw;
+    });
+    g+='<text x="'+(L.x+4)+'" y="'+(L.y-4)+'" class="tpage">#'+pg+(String(pg)===String(tv.root)?' ('+tr('treeRoot')+')':'')+'</text></g>';
+    boxes.push(g);
+  });
+  canvas.innerHTML='<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" class="treesvg">'+
+    '<defs><marker id="tar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6 z" class="tarrowhead"/></marker></defs>'+
+    edges.join('')+nexts.join('')+boxes.join('')+'</svg>';
+}
 
 // Схема всех таблиц текущей базы (только чтение).
 function renderSchema(){

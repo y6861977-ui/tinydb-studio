@@ -313,6 +313,16 @@ async function handleDropTable(req: IncomingMessage, res: ServerResponse): Promi
   }
 }
 
+function handleTree(db: Database, table: string, res: ServerResponse): void {
+  try {
+    if (!table) throw new Error("не указана таблица");
+    if (!db.hasTable(table)) throw new Error(`нет таблицы ${table}`);
+    sendJson(res, 200, db.table(table).treeStructure());
+  } catch (e) {
+    sendJson(res, 400, { error: (e as Error).message });
+  }
+}
+
 function handleTables(db: Database, res: ServerResponse): void {
   const tables = db.tableNames().map((name) => {
     const t = db.table(name);
@@ -586,6 +596,11 @@ const server = createServer((req, res) => {
     if (method === "GET" && path === "/api/tables") {
       const db = resolveDb(parsed.searchParams.get("db"), res);
       if (db) handleTables(db, res);
+      return;
+    }
+    if (method === "GET" && path === "/api/tree") {
+      const db = resolveDb(parsed.searchParams.get("db"), res);
+      if (db) handleTree(db, parsed.searchParams.get("table") ?? "", res);
       return;
     }
     if (method === "POST" && path === "/api/insert") return void handleInsert(req, res);

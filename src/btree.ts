@@ -31,6 +31,26 @@ interface Split {
   rightPageNo: number;
 }
 
+/** Один узел в структурной карте дерева (для визуализации). */
+export interface TreeNodeInfo {
+  pageNo: number;
+  type: "leaf" | "internal";
+  keys: string[]; // сырые (order-preserving) ключи; декодирование — на уровне таблицы
+  children?: number[]; // internal: номера страниц-детей
+  next?: number; // leaf: страница следующего листа (0 — нет)
+  bytes: number; // занятый размер узла на странице
+}
+
+/** Структурная карта всего дерева. */
+export interface TreeStructure {
+  root: number;
+  depth: number;
+  pageCount: number;
+  count: number;
+  pageSize: number;
+  nodes: TreeNodeInfo[];
+}
+
 function cmp(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -247,6 +267,44 @@ export class BTree {
       d++;
     }
     return d;
+  }
+
+  /**
+   * Структурная карта дерева (для визуализации): корень, высота, страницы и
+   * список узлов с их (сырыми, ещё не декодированными) ключами и связями.
+   */
+  structure(): TreeStructure {
+    const nodes: TreeNodeInfo[] = [];
+    const walk = (pageNo: number): void => {
+      const node = this.loadNode(pageNo);
+      if (node.type === "leaf") {
+        nodes.push({
+          pageNo,
+          type: "leaf",
+          keys: node.keys.slice(),
+          next: node.next,
+          bytes: nodeSize(node),
+        });
+        return;
+      }
+      nodes.push({
+        pageNo,
+        type: "internal",
+        keys: node.keys.slice(),
+        children: node.children.slice(),
+        bytes: nodeSize(node),
+      });
+      for (const c of node.children) walk(c);
+    };
+    walk(this.pager.root);
+    return {
+      root: this.pager.root,
+      depth: this.depth(),
+      pageCount: this.pageCount,
+      count: this.size,
+      pageSize: PAGE_SIZE,
+      nodes,
+    };
   }
 
   /** Текстовая карта дерева — для наглядной инспекции на диске. */
