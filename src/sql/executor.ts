@@ -33,6 +33,20 @@ import type {
 import type { Row, TableSchema, Value } from "../types.ts";
 import type { Tx } from "../database.ts";
 
+/**
+ * Узел плана выполнения (для визуализатора EXPLAIN). Дерево строится сверху
+ * вниз: корень — финальная операция (проекция/агрегат), листья — доступ к
+ * таблицам (скан или точечный поиск по PK/индексу).
+ */
+export interface PlanNode {
+  op: string; // "Seq Scan" | "Index Seek" | "Filter" | "Nested Loop Join" | ...
+  detail?: string; // таблица, условие, колонки и т.п.
+  access?: "index" | "seq"; // способ доступа (для подсветки)
+  scanned?: number; // сколько строк просмотрено на этом шаге
+  rows?: number; // сколько строк выдал этот шаг
+  children?: PlanNode[];
+}
+
 /** Результат исполнения одной инструкции. */
 export type ExecResult =
   | { kind: "created"; table: string }
@@ -49,6 +63,8 @@ export type ExecResult =
       scanned: number;
       /** Какой путь доступа выбран: "PRIMARY", имя колонки-индекса или null (скан). */
       usedIndex: string | null;
+      /** Дерево плана выполнения (для EXPLAIN-визуализатора). */
+      plan?: PlanNode;
     };
 
 /** Разобрать и выполнить ОДНУ инструкцию SQL. */
@@ -59,6 +75,21 @@ export function execute(db: Database, sql: string): ExecResult {
 /** Разобрать и выполнить несколько инструкций (через ';'). */
 export function executeProgram(db: Database, sql: string): ExecResult[] {
   return parseProgram(sql).map((s) => run(db, s));
+}
+
+/**
+ * EXPLAIN: выполнить ОДИН SELECT и вернуть его план + статистику.
+ * Не-SELECT отвергается до выполнения (чтобы EXPLAIN не имел побочных эффектов).
+ */
+export function explain(
+  db: Database,
+  sql: string,
+): { plan: PlanNode | undefined; scanned: number; returned: number; columns: string[] } {
+  const stmt = parse(sql);
+  if (stmt.type !== "select") throw new Error("EXPLAIN поддерживается только для SELECT");
+  const res = run(db, stmt);
+  if (res.kind !== "selected") throw new Error("EXPLAIN поддерживается только для SELECT");
+  return { plan: res.plan, scanned: res.scanned, returned: res.rows.length, columns: res.columns };
 }
 
 function run(db: Database, stmt: Statement): ExecResult {
@@ -220,22 +251,55 @@ function simpleSelect(src: Source, ast: Select): ExecResult {
   }
   if (ast.where !== null) validateWhere(ast.where, schema, quals);
 
+  const tname = src.table.schema.name;
   const plan = planPointLookup(ast.where, src.table);
   if (plan) {
+    const out = plan.rows.map((r) => project(r, outCols));
+    const seek: PlanNode = {
+      op: "Index Seek",
+      access: "index",
+      detail: `${tname} · ${plan.usedIndex === "PRIMARY" ? "PK" : "индекс " + plan.usedIndex} · ${whereText(ast.where!)}`,
+      scanned: plan.rows.length,
+      rows: plan.rows.length,
+    };
     return {
       kind: "selected",
       columns: outCols,
-      rows: plan.rows.map((r) => project(r, outCols)),
+      rows: out,
       scanned: plan.rows.length,
       usedIndex: plan.usedIndex,
+      plan: projectionNode(outCols, out.length, seek),
     };
   }
 
   const all = src.table.all();
-  const rows = all
-    .filter((r) => ast.where === null || evalWhere(ast.where, r, schema))
-    .map((r) => project(r, outCols));
-  return { kind: "selected", columns: outCols, rows, scanned: all.length, usedIndex: null };
+  const kept = all.filter((r) => ast.where === null || evalWhere(ast.where, r, schema));
+  const rows = kept.map((r) => project(r, outCols));
+  let node: PlanNode = { op: "Seq Scan", access: "seq", detail: tname, scanned: all.length, rows: all.length };
+  if (ast.where !== null) {
+    node = { op: "Filter", detail: whereText(ast.where), rows: kept.length, children: [node] };
+  }
+  return {
+    kind: "selected",
+    columns: outCols,
+    rows,
+    scanned: all.length,
+    usedIndex: null,
+    plan: projectionNode(outCols, rows.length, node),
+  };
+}
+
+/** Обернуть узел доступа проекцией колонок вывода. */
+function projectionNode(cols: string[], rows: number, child: PlanNode): PlanNode {
+  return { op: "Projection", detail: cols.join(", "), rows, children: [child] };
+}
+
+/** Текстовое представление условия WHERE (для строки плана). */
+function whereText(e: WhereExpr): string {
+  if (e.type === "logical") return `(${whereText(e.left)} ${e.op} ${whereText(e.right)})`;
+  const t = e.table ? `${e.table}.` : "";
+  const v = e.value.kind === "number" ? String(e.value.value) : `'${e.value.value}'`;
+  return `${t}${e.column} ${e.op} ${v}`;
 }
 
 /** Имена колонок вывода для одиночной таблицы (star или список колонок). */
@@ -319,6 +383,15 @@ function joinAggSelect(sources: Source[], ast: Select): ExecResult {
   let scanned = combined.length;
   let usedIndex: string | null = null;
 
+  // ведущая таблица (driver) — полный скан; поверх неё строится план джойнов
+  let node: PlanNode = {
+    op: "Seq Scan",
+    access: "seq",
+    detail: sources[0]!.alias,
+    scanned: combined.length,
+    rows: combined.length,
+  };
+
   // INDEX NESTED LOOP JOIN: для каждого join берём ключ из уже собранной строки
   // и ищем совпадения в новой таблице — по PK/индексу, иначе сканом.
   for (let j = 0; j < ast.joins.length; j++) {
@@ -326,6 +399,9 @@ function joinAggSelect(sources: Source[], ast: Select): ExecResult {
     const src = sources[j + 1]!;
     const scope = sources.slice(0, j + 1);
     const { newRef, existRef } = orientJoin(join, src, scope);
+    let rightOp = "Seq Scan";
+    let rightAccess: "index" | "seq" = "seq";
+    let rightDetail = src.alias;
 
     const next: Combined[] = [];
     for (const row of combined) {
@@ -335,30 +411,51 @@ function joinAggSelect(sources: Source[], ast: Select): ExecResult {
         const m = src.table.get(key);
         matches = m ? [m] : [];
         usedIndex ??= `PK:${src.alias}`;
+        rightOp = "Index Seek";
+        rightAccess = "index";
+        rightDetail = `${src.alias} · PK`;
       } else if (src.table.hasIndex(newRef.column)) {
         matches = src.table.getByIndex(newRef.column, key);
         usedIndex ??= `index:${src.alias}.${newRef.column}`;
+        rightOp = "Index Seek";
+        rightAccess = "index";
+        rightDetail = `${src.alias} · индекс ${newRef.column}`;
       } else {
         const all = src.table.all();
         scanned += all.length;
         matches = all.filter((r) => r[newRef.column] === key);
         usedIndex ??= `scan:${src.alias}`;
+        rightOp = "Seq Scan";
+        rightAccess = "seq";
+        rightDetail = `${src.alias} · скан`;
       }
       for (const m of matches) next.push({ ...row, ...prefixRow(src.alias, m) });
     }
     combined = next;
+
+    const cond = `${refKey(existRef, scope)} = ${src.alias}.${newRef.column}`;
+    node = {
+      op: rightAccess === "index" ? "Index Nested Loop Join" : "Nested Loop Join",
+      access: rightAccess,
+      detail: cond,
+      rows: combined.length,
+      children: [node, { op: rightOp, access: rightAccess, detail: rightDetail }],
+    };
   }
 
   // WHERE по объединённым строкам
   if (ast.where !== null) validateWhereRefs(ast.where, sources);
   const filtered =
     ast.where === null ? combined : combined.filter((r) => evalCombined(ast.where!, r, sources));
+  if (ast.where !== null) {
+    node = { op: "Filter", detail: whereText(ast.where), rows: filtered.length, children: [node] };
+  }
 
   const hasAgg = ast.items.some((i) => i.kind === "aggregate");
   if (hasAgg || ast.groupBy.length > 0) {
-    return aggregate(filtered, ast, sources, scanned, usedIndex);
+    return aggregate(filtered, ast, sources, scanned, usedIndex, node);
   }
-  return projectJoined(filtered, ast, sources, scanned, usedIndex);
+  return projectJoined(filtered, ast, sources, scanned, usedIndex, node);
 }
 
 /** Определить, какая сторона ON относится к новой таблице, а какая — к уже собранным. */
@@ -377,6 +474,7 @@ function projectJoined(
   sources: Source[],
   scanned: number,
   usedIndex: string | null,
+  base: PlanNode,
 ): ExecResult {
   let outCols: string[];
   if (ast.items.length === 1 && ast.items[0]!.kind === "star") {
@@ -392,7 +490,14 @@ function projectJoined(
     for (const c of outCols) o[c] = r[c]!;
     return o;
   });
-  return { kind: "selected", columns: outCols, rows: out, scanned, usedIndex };
+  return {
+    kind: "selected",
+    columns: outCols,
+    rows: out,
+    scanned,
+    usedIndex,
+    plan: projectionNode(outCols, out.length, base),
+  };
 }
 
 /** Агрегация (COUNT/SUM/MIN/MAX/AVG) с необязательным GROUP BY. */
@@ -402,6 +507,7 @@ function aggregate(
   sources: Source[],
   scanned: number,
   usedIndex: string | null,
+  base: PlanNode,
 ): ExecResult {
   // не-агрегатные колонки в выборке обязаны присутствовать в GROUP BY
   const groupKeys = ast.groupBy.map((g) => refKey(g, sources));
@@ -437,7 +543,12 @@ function aggregate(
     }
     outRows.push(o);
   }
-  return { kind: "selected", columns: outCols, rows: outRows, scanned, usedIndex };
+  const aggOp = ast.groupBy.length > 0 ? "Group Aggregate" : "Aggregate";
+  const aggDetail =
+    (ast.groupBy.length > 0 ? "GROUP BY " + groupKeys.join(", ") + " · " : "") +
+    ast.items.map((it) => itemName(it, sources)).join(", ");
+  const plan: PlanNode = { op: aggOp, detail: aggDetail, rows: outRows.length, children: [base] };
+  return { kind: "selected", columns: outCols, rows: outRows, scanned, usedIndex, plan };
 }
 
 function itemName(it: SelectItem, sources: Source[]): string {

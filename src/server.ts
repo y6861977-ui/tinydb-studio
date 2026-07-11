@@ -31,7 +31,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import { Database } from "./database.ts";
-import { executeProgram, type ExecResult } from "./sql/executor.ts";
+import { executeProgram, explain, type ExecResult } from "./sql/executor.ts";
 
 const root = process.argv[2] ?? "studio-data";
 const port = Number(process.argv[3] ?? process.env["PORT"] ?? 8080);
@@ -308,6 +308,26 @@ async function handleDropTable(req: IncomingMessage, res: ServerResponse): Promi
     if (!table) throw new Error("не указана таблица");
     db.dropTable(table);
     sendJson(res, 200, { ok: true, table });
+  } catch (e) {
+    sendJson(res, 400, { error: (e as Error).message });
+  }
+}
+
+async function handleExplain(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  let name: string | null = null;
+  let sqlBody = "";
+  try {
+    const { db, sql } = await readJson<{ db?: string; sql?: string }>(req);
+    name = db ?? null;
+    sqlBody = sql ?? "";
+  } catch {
+    sendJson(res, 400, { error: "тело должно быть JSON { db, sql }" });
+    return;
+  }
+  const db = resolveDb(name, res);
+  if (!db) return;
+  try {
+    sendJson(res, 200, explain(db, sqlBody));
   } catch (e) {
     sendJson(res, 400, { error: (e as Error).message });
   }
@@ -603,6 +623,7 @@ const server = createServer((req, res) => {
       if (db) handleTree(db, parsed.searchParams.get("table") ?? "", res);
       return;
     }
+    if (method === "POST" && path === "/api/explain") return void handleExplain(req, res);
     if (method === "POST" && path === "/api/insert") return void handleInsert(req, res);
     if (method === "POST" && path === "/api/delete") return void handleDelete(req, res);
     if (method === "POST" && path === "/api/update") return void handleUpdate(req, res);

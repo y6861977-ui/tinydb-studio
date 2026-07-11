@@ -102,6 +102,20 @@
   .treesvg .tsep{stroke:var(--border)}
   .treesvg .tpage{fill:var(--muted);font-family:var(--mono);font-size:10px}
 
+  /* --- визуализатор плана запроса (EXPLAIN) --- */
+  .planview{flex:1;min-height:0;overflow:auto;padding:6px 2px}
+  .plan-head{font-family:var(--mono);font-size:13px;color:var(--muted);margin-bottom:14px}
+  .pchildren{margin-left:26px;border-left:2px solid var(--border);padding-left:18px;margin-top:8px;
+    display:flex;flex-direction:column;gap:8px}
+  .pcard{display:inline-flex;align-items:center;gap:10px;background:var(--surface2);
+    border:1px solid var(--border);border-radius:9px;padding:8px 12px}
+  .pop{font-family:var(--mono);font-size:12px;font-weight:600;padding:2px 9px;border-radius:6px;white-space:nowrap}
+  .pop.pidx{background:var(--accent-bg);color:var(--accent)}
+  .pop.pseq{background:rgba(210,153,34,.16);color:#d29922}
+  .pop.pgen{background:var(--surface);color:var(--text)}
+  .pdetail{font-family:var(--mono);font-size:12.5px;color:var(--text)}
+  .pmeta{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap}
+
   .main{flex:1;min-width:0;padding:20px 24px;display:flex;flex-direction:column;gap:18px;overflow:hidden}
   .tabs{display:inline-flex;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:3px;gap:2px;align-self:flex-start}
   .tabs button{background:transparent;color:var(--muted);border:none;border-radius:6px;padding:7px 16px;
@@ -259,6 +273,7 @@
           <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:10px">
             <input type="file" id="sqlfile" accept=".sql,.txt" hidden>
             <button class="btn2" id="importbtn" title="Импортировать и выполнить .sql-файл" data-i18n="importBtn" data-i18n-title="importTitle">&#8593; Импорт SQL</button>
+            <button class="btn2" id="explainbtn" title="Показать план выполнения (EXPLAIN)" data-i18n="explainBtn" data-i18n-title="explainTitle">&#9881; План</button>
             <button class="run" id="run" data-i18n="runBtn">&#9654; Выполнить</button>
           </div>
         </div>
@@ -277,7 +292,8 @@
             <div class="status" id="status"></div>
           </div>
           <div id="addform" hidden></div>
-          <div class="grid"><table><thead id="head"></thead><tbody id="tbody"></tbody></table></div>
+          <div class="grid" id="grid"><table><thead id="head"></thead><tbody id="tbody"></tbody></table></div>
+          <div class="planview" id="planview" hidden></div>
         </div>
       </div>
       <div id="schemaview" hidden></div>
@@ -311,6 +327,8 @@ var I18N={
     treeRoot:'корень', treeSelectDb:'выберите базу данных',
     treeEmpty:'в дереве нет ключей — добавьте строки',
     treeLeaf:'лист', treeInternal:'внутренний узел',
+    explainBtn:'⚙ План', explainTitle:'Показать план выполнения (EXPLAIN)',
+    planTitle:'План выполнения', planRows:'строк', planScanned:'просмотрено', planReturned:'возвращено',
     importBtn:'↑ Импорт SQL', runBtn:'▶ Выполнить', resultLabel:'Результат',
     addRowBtn:'+ строка', exportBtn:'⬇ Экспорт', logoutBtn:'Выйти',
     delDbBtn:'🗑 Удалить БД', yes:'да', no:'нет', newDbPh:'имя новой БД',
@@ -350,6 +368,8 @@ var I18N={
     treeRoot:'root', treeSelectDb:'select a database',
     treeEmpty:'tree is empty — add some rows',
     treeLeaf:'leaf', treeInternal:'internal node',
+    explainBtn:'⚙ Plan', explainTitle:'Show the query plan (EXPLAIN)',
+    planTitle:'Query plan', planRows:'rows', planScanned:'scanned', planReturned:'returned',
     importBtn:'↑ Import SQL', runBtn:'▶ Run', resultLabel:'Result',
     addRowBtn:'+ row', exportBtn:'⬇ Export', logoutBtn:'Sign out',
     delDbBtn:'🗑 Delete DB', yes:'yes', no:'no', newDbPh:'new DB name',
@@ -459,6 +479,7 @@ function post(path,data){
 }
 
 function render(cols,rows){
+  $('planview').hidden=true;$('grid').hidden=false; // показываем таблицу, прячем план
   curCols=cols;curRows=rows;editCtx=computeEditContext(cols);
   edithint.textContent=editCtx?tr('editHint'):tr('readOnly');
   addrowbtn.hidden=!editCtx;
@@ -618,6 +639,37 @@ function runSql(q,silent){
     statusEl.textContent=tr('statusRows',(s.rows!=null?s.rows:(b.rows||[]).length),(s.scanned!=null?s.scanned:0),(s.plan||''));
     if(!silent){loadHistory();loadTables();} // историю и список таблиц (счётчики/CREATE/DROP) обновляем для ручных запросов
   }).catch(function(e){showError(tr('net',e.message));});
+}
+
+// --- EXPLAIN: показать план выполнения SELECT ---
+function runExplain(q){
+  if(!current){showError(tr('selectDbFirst'));return;}
+  if(!(q||'').trim())return;
+  setView('data');
+  post('/api/explain',{db:current,sql:q}).then(function(res){
+    if(!res.ok){showError(res.body&&res.body.error?res.body.error:tr('errQuery'));return;}
+    renderPlan(res.body);
+  }).catch(function(e){showError(tr('net',e.message));});
+}
+// один узел плана -> HTML (рекурсивно, дети с отступом и связью слева)
+function planNodeHtml(n){
+  var accClass=n.access==='index'?'pidx':(n.access==='seq'?'pseq':'pgen');
+  var meta=[];
+  if(n.rows!=null)meta.push(tr('planRows')+': '+n.rows);
+  if(n.scanned!=null)meta.push(tr('planScanned')+': '+n.scanned);
+  var card='<div class="pcard"><span class="pop '+accClass+'">'+esc(n.op)+'</span>'+
+    (n.detail?'<span class="pdetail">'+esc(n.detail)+'</span>':'')+
+    (meta.length?'<span class="pmeta">'+meta.join(' · ')+'</span>':'')+'</div>';
+  var kids=(n.children||[]).map(planNodeHtml).join('');
+  return '<div class="pnode">'+card+(kids?'<div class="pchildren">'+kids+'</div>':'')+'</div>';
+}
+function renderPlan(data){
+  // область результата: прячем таблицу и вспомогательные кнопки, показываем план
+  $('grid').hidden=true;$('planview').hidden=false;
+  addrowbtn.hidden=true;exportbtn.hidden=true;exportmenu.hidden=true;hideAddForm();edithint.textContent='';
+  statusEl.textContent=tr('planTitle');
+  var head='<div class="plan-head">'+tr('planScanned')+': '+data.scanned+' → '+tr('planReturned')+': '+data.returned+'</div>';
+  $('planview').innerHTML=head+(data.plan?planNodeHtml(data.plan):'<div class="schema-empty">—</div>');
 }
 
 // --- история запросов (хранится в служебной таблице query_history) ---
@@ -822,6 +874,7 @@ function runImport(text){
 
 // --- запуск/вход/выход ---
 $('run').onclick=function(){runSql(sql.value);};
+$('explainbtn').onclick=function(){runExplain(sql.value);};
 
 // --- переключатель видов: Данные / Схема ---
 function setView(v){

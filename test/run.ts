@@ -17,6 +17,7 @@ import "./query.test.ts";
 import "./mutations.test.ts";
 import "./droptable.test.ts";
 import "./tree-structure.test.ts";
+import "./plan.test.ts";
 import { report } from "./harness.ts";
 
 report();
