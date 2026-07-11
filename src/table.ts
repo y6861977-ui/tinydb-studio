@@ -13,7 +13,7 @@
  */
 
 import { BTree } from "./btree.ts";
-import type { PageTxn } from "./pager.ts";
+import { PAGE_SIZE, type PageTxn } from "./pager.ts";
 import {
   type TableSchema,
   type Row,
@@ -53,6 +53,28 @@ export interface TableTreeView {
   count: number;
   pageSize: number;
   nodes: TableTreeNode[];
+}
+
+/** Одна физическая страница файла таблицы (ключи декодированы). */
+export interface TablePage {
+  pageNo: number;
+  kind: "meta" | "leaf" | "internal";
+  bytes: number;
+  numKeys?: number;
+  next?: number;
+  isRoot?: boolean;
+  keys?: Value[];
+  meta?: { magic: number; pageCount: number; root: number; count: number };
+}
+
+/** Физическая карта страниц файла таблицы. */
+export interface TablePageMap {
+  table: string;
+  pageSize: number;
+  pageCount: number;
+  root: number;
+  count: number;
+  pages: TablePage[];
 }
 
 export class Table {
@@ -105,6 +127,30 @@ export class Table {
   /** Число строк. */
   get count(): number {
     return this.tree.size;
+  }
+
+  /** Физическая карта страниц файла таблицы (мета + узлы) — для инспектора. */
+  pageMap(): TablePageMap {
+    const pkType = columnOf(this.schema, this.schema.primaryKey).type;
+    const pages = this.tree.physicalPages().map((p) => ({
+      pageNo: p.pageNo,
+      kind: p.kind,
+      bytes: p.bytes,
+      numKeys: p.numKeys,
+      next: p.next,
+      isRoot: p.isRoot,
+      meta: p.meta,
+      keys: p.keys ? p.keys.map((k) => decodeValueKey(pkType, k)) : undefined,
+    }));
+    const meta = pages[0]!.meta!;
+    return {
+      table: this.schema.name,
+      pageSize: PAGE_SIZE,
+      pageCount: meta.pageCount,
+      root: meta.root,
+      count: meta.count,
+      pages,
+    };
   }
 
   /**

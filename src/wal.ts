@@ -28,6 +28,7 @@ import {
   existsSync,
   rmSync,
 } from "node:fs";
+import { basename } from "node:path";
 
 import { PAGE_SIZE, type Pager, type MetaSnapshot, type PageTxn } from "./pager.ts";
 
@@ -175,6 +176,35 @@ function parseWal(buf: Buffer): ParsedWal {
     }
   }
   return { committed, pages };
+}
+
+/** Кадр WAL для инспектора: какой файл, номер страницы, размер образа. */
+export interface WalFrame {
+  file: string;
+  pageNo: number;
+  bytes: number;
+}
+
+/** Состояние WAL для инспектора: существует ли, зафиксирован ли, какие кадры. */
+export interface WalInfo {
+  exists: boolean;
+  committed: boolean;
+  frames: WalFrame[];
+}
+
+/**
+ * Прочитать WAL для инспекции (без изменений на диске). Обычно после checkpoint
+ * файла нет -> exists=false (всё зафиксировано). Если процесс упал между
+ * persist() и checkpoint() — вернёт кадры и committed=true (их проиграет recover).
+ */
+export function inspectWal(walPath: string): WalInfo {
+  if (!existsSync(walPath)) return { exists: false, committed: false, frames: [] };
+  const { committed, pages } = parseWal(readFileSync(walPath));
+  const frames: WalFrame[] = [];
+  for (const [path, byNo] of pages) {
+    for (const [no, data] of byNo) frames.push({ file: basename(path), pageNo: no, bytes: data.length });
+  }
+  return { exists: true, committed, frames };
 }
 
 /**

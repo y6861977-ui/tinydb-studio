@@ -51,6 +51,18 @@ export interface TreeStructure {
   nodes: TreeNodeInfo[];
 }
 
+/** Одна физическая страница файла (для инспектора страниц). */
+export interface PhysicalPage {
+  pageNo: number;
+  kind: "meta" | "leaf" | "internal";
+  bytes: number; // занято полезными данными
+  numKeys?: number; // для узлов
+  next?: number; // для листа
+  keys?: string[]; // сырые ключи узла (декодируются на уровне таблицы)
+  isRoot?: boolean;
+  meta?: { magic: number; pageCount: number; root: number; count: number };
+}
+
 function cmp(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -305,6 +317,40 @@ export class BTree {
       pageSize: PAGE_SIZE,
       nodes,
     };
+  }
+
+  /**
+   * Физические страницы файла по порядку номеров: страница 0 — мета, дальше —
+   * узлы дерева. Для инспектора страниц (как данные лежат на диске в блоках 4КБ).
+   */
+  physicalPages(): PhysicalPage[] {
+    const out: PhysicalPage[] = [];
+    const m = this.pager.readPage(0);
+    out.push({
+      pageNo: 0,
+      kind: "meta",
+      bytes: 16, // magic + pageCount + root + count (4×4B)
+      meta: {
+        magic: m.readUInt32BE(0),
+        pageCount: m.readUInt32BE(4),
+        root: m.readUInt32BE(8),
+        count: m.readUInt32BE(12),
+      },
+    });
+    for (let p = 1; p < this.pager.pageCount; p++) {
+      const node = this.loadNode(p);
+      const base: PhysicalPage = {
+        pageNo: p,
+        kind: node.type,
+        bytes: nodeSize(node),
+        numKeys: node.keys.length,
+        keys: node.keys.slice(),
+        isRoot: p === this.pager.root,
+      };
+      if (node.type === "leaf") base.next = node.next;
+      out.push(base);
+    }
+    return out;
   }
 
   /** Текстовая карта дерева — для наглядной инспекции на диске. */

@@ -343,6 +343,16 @@ function handleTree(db: Database, table: string, res: ServerResponse): void {
   }
 }
 
+function handlePages(db: Database, table: string, res: ServerResponse): void {
+  try {
+    if (!table) throw new Error("не указана таблица");
+    if (!db.hasTable(table)) throw new Error(`нет таблицы ${table}`);
+    sendJson(res, 200, { ...db.table(table).pageMap(), wal: db.walInfo() });
+  } catch (e) {
+    sendJson(res, 400, { error: (e as Error).message });
+  }
+}
+
 function handleTables(db: Database, res: ServerResponse): void {
   const tables = db.tableNames().map((name) => {
     const t = db.table(name);
@@ -621,6 +631,11 @@ const server = createServer((req, res) => {
     if (method === "GET" && path === "/api/tree") {
       const db = resolveDb(parsed.searchParams.get("db"), res);
       if (db) handleTree(db, parsed.searchParams.get("table") ?? "", res);
+      return;
+    }
+    if (method === "GET" && path === "/api/pages") {
+      const db = resolveDb(parsed.searchParams.get("db"), res);
+      if (db) handlePages(db, parsed.searchParams.get("table") ?? "", res);
       return;
     }
     if (method === "POST" && path === "/api/explain") return void handleExplain(req, res);

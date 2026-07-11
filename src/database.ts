@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { Database as LogStore } from "./db.ts";
 import { Table } from "./table.ts";
 import { type TableSchema, validateSchema } from "./types.ts";
-import { Transaction, recover } from "./wal.ts";
+import { Transaction, recover, inspectWal, type WalInfo } from "./wal.ts";
 import { LockManager } from "./locks.ts";
 
 interface IndexDef {
@@ -196,6 +196,11 @@ export class Database {
   /** Имена всех таблиц. */
   tableNames(): string[] {
     return [...this.tables.keys()];
+  }
+
+  /** Состояние WAL (для инспектора). */
+  walInfo(): WalInfo {
+    return inspectWal(this.walPath());
   }
 
   close(): void {

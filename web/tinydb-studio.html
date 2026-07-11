@@ -116,6 +116,31 @@
   .pdetail{font-family:var(--mono);font-size:12.5px;color:var(--text)}
   .pmeta{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap}
 
+  /* --- инспектор страниц / WAL --- */
+  .pages-canvas{overflow:auto;flex:1;min-height:0;padding:2px}
+  .pg-grid{display:flex;flex-wrap:wrap;gap:12px}
+  .pgcard{width:210px;border:1px solid var(--border);border-radius:10px;padding:12px;
+    background:var(--surface2);display:flex;flex-direction:column;gap:8px}
+  .pgcard.pgroot{box-shadow:0 0 0 2px var(--accent) inset}
+  .pghead{display:flex;align-items:center;justify-content:space-between}
+  .pgno{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .pgbadge{font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px}
+  .pgbadge.bmeta{background:rgba(210,153,34,.16);color:#d29922}
+  .pgbadge.bleaf{background:var(--accent-bg);color:var(--accent)}
+  .pgbadge.binternal{background:var(--surface);color:var(--text)}
+  .pgbar{height:8px;border-radius:5px;background:var(--bg);overflow:hidden;border:1px solid var(--border)}
+  .pgbarfill{height:100%;background:var(--accent)}
+  .pgmini{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  .pgkeys{font-family:var(--mono);font-size:11px;color:var(--text);word-break:break-word;line-height:1.45;
+    max-height:52px;overflow:hidden}
+  .wal-panel{margin-top:20px;border-top:1px solid var(--border);padding-top:16px}
+  .wal-title{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+  .wal-state{font-family:var(--mono);font-size:13px;color:var(--text);display:flex;align-items:center;gap:9px}
+  .wal-dot{width:9px;height:9px;border-radius:50%;background:var(--green);flex-shrink:0}
+  .wal-dot.pending{background:#d29922}
+  .wal-frame{font-family:var(--mono);font-size:12px;color:var(--text);margin-top:6px}
+  .wal-hint{font-size:12px;color:var(--muted);margin-top:10px;max-width:680px;line-height:1.55}
+
   .main{flex:1;min-width:0;padding:20px 24px;display:flex;flex-direction:column;gap:18px;overflow:hidden}
   .tabs{display:inline-flex;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:3px;gap:2px;align-self:flex-start}
   .tabs button{background:transparent;color:var(--muted);border:none;border-radius:6px;padding:7px 16px;
@@ -262,6 +287,7 @@
         <button id="tabData" class="on" data-i18n="tabData">Данные</button>
         <button id="tabSchema" data-i18n="tabSchema">Схема</button>
         <button id="tabTree" data-i18n="tabTree">Дерево</button>
+        <button id="tabPages" data-i18n="tabPages">Страницы</button>
       </div>
       <div id="dataview">
         <div>
@@ -298,6 +324,7 @@
       </div>
       <div id="schemaview" hidden></div>
       <div id="treeview" hidden></div>
+      <div id="pagesview" hidden></div>
     </div>
   </div>
 </div>
@@ -329,6 +356,10 @@ var I18N={
     treeLeaf:'лист', treeInternal:'внутренний узел',
     explainBtn:'⚙ План', explainTitle:'Показать план выполнения (EXPLAIN)',
     planTitle:'План выполнения', planRows:'строк', planScanned:'просмотрено', planReturned:'возвращено',
+    tabPages:'Страницы', pgFill:'заполнено', pgRows:'строк', pgNext:'next', pgKeys:'ключи',
+    walTitle:'Журнал (WAL)', walEmpty:'пуст — все транзакции зафиксированы (checkpoint выполнен)',
+    walCommitted:'зафиксирована', walUncommitted:'не зафиксирована', walFrames:'кадров страниц',
+    walHint:'WAL хранит образы изменённых страниц до применения к файлам данных. При сбое между записью в WAL и checkpoint восстановление проигрывает журнал заново; после checkpoint журнал очищается.',
     importBtn:'↑ Импорт SQL', runBtn:'▶ Выполнить', resultLabel:'Результат',
     addRowBtn:'+ строка', exportBtn:'⬇ Экспорт', logoutBtn:'Выйти',
     delDbBtn:'🗑 Удалить БД', yes:'да', no:'нет', newDbPh:'имя новой БД',
@@ -370,6 +401,10 @@ var I18N={
     treeLeaf:'leaf', treeInternal:'internal node',
     explainBtn:'⚙ Plan', explainTitle:'Show the query plan (EXPLAIN)',
     planTitle:'Query plan', planRows:'rows', planScanned:'scanned', planReturned:'returned',
+    tabPages:'Pages', pgFill:'fill', pgRows:'rows', pgNext:'next', pgKeys:'keys',
+    walTitle:'Write-ahead log (WAL)', walEmpty:'empty — all transactions committed (checkpoint done)',
+    walCommitted:'committed', walUncommitted:'not committed', walFrames:'page frames',
+    walHint:'The WAL holds images of changed pages before they are applied to the data files. After a crash between the WAL write and checkpoint, recovery replays the log; after checkpoint the log is cleared.',
     importBtn:'↑ Import SQL', runBtn:'▶ Run', resultLabel:'Result',
     addRowBtn:'+ row', exportBtn:'⬇ Export', logoutBtn:'Sign out',
     delDbBtn:'🗑 Delete DB', yes:'yes', no:'no', newDbPh:'new DB name',
@@ -427,6 +462,7 @@ function applyLang(){
     if(current)loadTables(null,false); else curdb.textContent=tr('noDb');
     if(view==='schema')renderSchema();
     if(view==='tree')renderTree();
+    if(view==='pages')renderPages();
     edithint.textContent=editCtx?tr('editHint'):(curCols.length?tr('readOnly'):'');
   }
 }
@@ -882,15 +918,19 @@ function setView(v){
   $('tabData').classList.toggle('on',v==='data');
   $('tabSchema').classList.toggle('on',v==='schema');
   $('tabTree').classList.toggle('on',v==='tree');
+  $('tabPages').classList.toggle('on',v==='pages');
   $('dataview').hidden=v!=='data';
   $('schemaview').hidden=v!=='schema';
   $('treeview').hidden=v!=='tree';
+  $('pagesview').hidden=v!=='pages';
   if(v==='schema')renderSchema();
   if(v==='tree')renderTree();
+  if(v==='pages')renderPages();
 }
 $('tabData').onclick=function(){setView('data');};
 $('tabSchema').onclick=function(){setView('schema');};
 $('tabTree').onclick=function(){setView('tree');};
+$('tabPages').onclick=function(){setView('pages');};
 
 // --- визуализатор B+-дерева (вкладка «Дерево») ---
 var treeTable=null; // выбранная в этой вкладке таблица
@@ -986,6 +1026,71 @@ function drawTree(tv){
   canvas.innerHTML='<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" class="treesvg">'+
     '<defs><marker id="tar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6 z" class="tarrowhead"/></marker></defs>'+
     edges.join('')+nexts.join('')+boxes.join('')+'</svg>';
+}
+
+// --- инспектор страниц / WAL (вкладка «Страницы») ---
+var pagesTable=null;
+function renderPages(){
+  var sv=$('pagesview');
+  if(!current){sv.innerHTML='<div class="schema-empty">'+tr('treeSelectDb')+'</div>';return;}
+  if(!tablesMeta.length){sv.innerHTML='<div class="schema-empty">'+esc(tr('schemaNoTables',current))+'</div>';return;}
+  var names=tablesMeta.map(function(t){return t.name;});
+  if(names.indexOf(pagesTable)<0)pagesTable=names[0];
+  sv.innerHTML=
+    '<div class="tree-bar">'+
+      '<label>'+tr('treeTable')+':</label>'+
+      '<select id="pgSel">'+names.map(function(n){return '<option'+(n===pagesTable?' selected':'')+'>'+esc(n)+'</option>';}).join('')+'</select>'+
+      '<span class="tree-stats" id="pgStats"></span>'+
+    '</div>'+
+    '<div class="pages-canvas" id="pgCanvas"></div>';
+  $('pgSel').onchange=function(){pagesTable=this.value;renderPages();};
+  api('/api/pages?db='+encodeURIComponent(current)+'&table='+encodeURIComponent(pagesTable),{}).then(function(res){
+    if(!res.ok){$('pgCanvas').innerHTML='<div class="schema-empty">'+esc(res.body&&res.body.error?res.body.error:'—')+'</div>';return;}
+    drawPages(res.body);
+  }).catch(function(e){$('pgCanvas').innerHTML='<div class="schema-empty">'+esc(tr('net',e.message))+'</div>';});
+}
+function drawPages(d){
+  $('pgStats').textContent=tr('treePages')+': '+d.pageCount+' · '+tr('pgRows')+': '+d.count+' · '+tr('treeRoot')+': #'+d.root+' · '+d.pageSize+' B';
+  function keyPrev(keys){
+    if(!keys||!keys.length)return '';
+    var ks=keys.map(String);
+    if(ks.length>12)ks=ks.slice(0,9).concat(['…'],ks.slice(-2));
+    return ks.join(', ');
+  }
+  var cards=d.pages.map(function(p){
+    var root=p.isRoot?' pgroot':'';
+    if(p.kind==='meta'){
+      var m=p.meta;
+      return '<div class="pgcard'+root+'">'+
+        '<div class="pghead"><span class="pgno">#'+p.pageNo+'</span><span class="pgbadge bmeta">META</span></div>'+
+        '<div class="pgmini">magic: TDB1</div>'+
+        '<div class="pgmini">pageCount: '+m.pageCount+'</div>'+
+        '<div class="pgmini">root: #'+m.root+'</div>'+
+        '<div class="pgmini">count: '+m.count+'</div>'+
+      '</div>';
+    }
+    var pct=Math.round(p.bytes/d.pageSize*100);
+    var badge=p.kind==='leaf'?'bleaf':'binternal';
+    var label=p.kind==='leaf'?'LEAF':'INTERNAL';
+    return '<div class="pgcard'+root+'">'+
+      '<div class="pghead"><span class="pgno">#'+p.pageNo+(p.isRoot?' · '+tr('treeRoot'):'')+'</span><span class="pgbadge '+badge+'">'+label+'</span></div>'+
+      '<div class="pgbar"><div class="pgbarfill" style="width:'+pct+'%"></div></div>'+
+      '<div class="pgmini">'+tr('pgFill')+': '+pct+'% ('+p.bytes+' / '+d.pageSize+' B)</div>'+
+      '<div class="pgmini">'+tr('pgKeys')+': '+p.numKeys+(p.kind==='leaf'?' · '+tr('pgNext')+': '+(p.next?'#'+p.next:'—'):'')+'</div>'+
+      '<div class="pgkeys">'+esc(keyPrev(p.keys))+'</div>'+
+    '</div>';
+  }).join('');
+  var w=d.wal,wal;
+  if(!w.exists){
+    wal='<div class="wal-state"><span class="wal-dot"></span>'+tr('walEmpty')+'</div>';
+  } else {
+    wal='<div class="wal-state"><span class="wal-dot'+(w.committed?'':' pending')+'"></span>'+
+      (w.committed?tr('walCommitted'):tr('walUncommitted'))+' · '+w.frames.length+' '+tr('walFrames')+'</div>'+
+      w.frames.map(function(f){return '<div class="wal-frame">• '+esc(f.file)+' · page #'+f.pageNo+' · '+f.bytes+' B</div>';}).join('');
+  }
+  $('pgCanvas').innerHTML='<div class="pg-grid">'+cards+'</div>'+
+    '<div class="wal-panel"><div class="wal-title">'+tr('walTitle')+'</div>'+wal+
+    '<div class="wal-hint">'+tr('walHint')+'</div></div>';
 }
 
 // Схема всех таблиц текущей базы (только чтение).
